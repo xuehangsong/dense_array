@@ -1,1 +1,7 @@
-/global/cscratch1/sd/kchen89/ERT_model 
+/global/cscratch1/sd/kchen89/ERT_model
+
+
+
+46.37288, -119.27205
+X:594468.831m  Y:116280.404m
+
