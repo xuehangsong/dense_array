@@ -1,4 +1,4 @@
-# SUMMARY:      preprocess_data.py
+## SUMMARY:      preprocess_data.py
 # USAGE:        main scripts to do the rtd analyze
 # ORG:          Pacific Northwest National Laboratory
 # AUTHOR:       Xuehang Song
@@ -7,32 +7,32 @@
 # DESCRIPTION:
 # DESCRIPTION-END
 
-from datetime import datetime, timedelta
-import numpy as np
-import copy
-import csv
-from sklearn.externals import joblib
-import mpl_scatter_density
-import matplotlib.pyplot as plt
 # from fastdtw import fastdtw
-from scipy.spatial import distance
-from scipy.cluster import hierarchy
-from scipy.cluster.hierarchy import dendrogram
-from matplotlib.pyplot import cm
-from matplotlib.lines import Line2D
-from matplotlib.colors import rgb2hex
-from mpl_toolkits.mplot3d import Axes3D
-import h5py as h5
-from scipy.interpolate import RectBivariateSpline
-from xml.etree import ElementTree as ET
-from xml.dom import minidom
-from scipy.interpolate import interp2d
-from pykrige.uk3d import UniversalKriging3D
-from pykrige.uk import UniversalKriging
-from matplotlib.patches import Rectangle
-from pykrige.uk3d import UniversalKriging3D
-import multiprocessing as mp
+
 import pywt
+import multiprocessing as mp
+from matplotlib.patches import Rectangle
+from pykrige.uk import UniversalKriging
+from pykrige.uk3d import UniversalKriging3D
+from scipy.interpolate import interp2d
+from xml.dom import minidom
+from xml.etree import ElementTree as ET
+from scipy.interpolate import RectBivariateSpline
+import h5py as h5
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.colors import rgb2hex
+from matplotlib.lines import Line2D
+from matplotlib.pyplot import cm
+from scipy.cluster.hierarchy import dendrogram
+from scipy.cluster import hierarchy
+from scipy.spatial import distance
+import matplotlib.pyplot as plt
+import mpl_scatter_density
+from sklearn.externals import joblib
+import csv
+import copy
+import numpy as np
+from datetime import datetime, timedelta
 
 
 def prettify(element):
@@ -124,13 +124,14 @@ data_dir = "/mnt/e/dense_array/data/"
 geo_unit_file = data_dir+"300A_EV_surfaces_012612.dat"
 bathymetry_file = data_dir+"g_bathymetry_v3_clip_2nd.asc"
 da1_joblib = data_dir+"da1.joblib"
+sws1_joblib = data_dir+"SWS-1.joblib"
+truncated_da1_joblib = data_dir+"truncated_da1.joblib"
 
 # output
 results_dir = "/mnt/e/dense_array/results/"
 
 # figure
 img_dir = "/mnt/e/dense_array/figures/"
-
 
 # output
 paraview_dir = "/mnt/e/dense_array/paraview/"
@@ -142,13 +143,16 @@ da1_h5 = paraview_dir+"da1.h5"
 da1_xdmf = paraview_dir+"da1.xdmf"
 temperature_3d_h5 = paraview_dir+"3d_temperature.h5"
 temperature_3d_xdmf = paraview_dir+"3d_temperature_"
+mean_temperature_h5 = paraview_dir+"mean_temperature.h5"
+mean_temperature_xdmf = paraview_dir+"mean_temperature.xdmf"
+
 
 # load preprocessed data
-da1 = joblib.load(da1_joblib)
+# da1 = joblib.load(da1_joblib)
+# sws1 = joblib.load(sws1_joblib)
+
 
 date_origin = datetime.strptime("2017-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-da1["delta_day"] = np.array(
-    [(x-date_origin).total_seconds()/3600/24 for x in da1["time"]])
 date_label = ["2017",
               "2018",
               "2019",
@@ -187,6 +191,7 @@ ny = len(dy)
 nz = len(dz)
 material_z = np.append(np.arange(z[-1], 96, -0.1)[::-1], z)
 material_nz = len(material_z)
+material_dz = np.array([0.1]*material_nz)
 bath_x = np.arange(593000.5598+0.5, 594900.5598, 1)
 bath_y = np.arange(114500.6771+0.5, 117800.6771, 1)
 
@@ -213,7 +218,6 @@ def plot_depth_sorted():
     fig_name = img_dir + "da1_depth_sorted.png"
     fig, axes = plt.subplots(nrow, ncol)
     for therm_index, ithermistor in enumerate(thermistors):
-        ax = axes.flatten()[therm_index]
         ax = axes.flatten()[therm_index]
         ax.fill_between(da1["time"], therm_low, therm_high, color="lightgrey")
         ax.plot(
@@ -280,12 +284,12 @@ def plot_depth_sorted_fill():
     print("Hello World!")
 
 
-def plot_mean_variance():
+def plot_mean_variance_achive():
     """
     plot elevation sorted by thermistor depth
     """
 
-    date_end = datetime.strptime("2019-11-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+#    date_end = datetime.strptime("2019-11-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
     thermistors = [x for x in list(
         da1.keys()) if x != "time" and x != "delta_day"]
@@ -299,7 +303,7 @@ def plot_mean_variance():
 
     therm_data = np.array([da1[x]["temperature"] for x in thermistors])
     therm_time = da1["time"]
-    therm_data = therm_data[:, da1["time"] < date_end]
+#    therm_data = therm_data[:, da1["time"] < date_end]
     valid_ntherm = np.count_nonzero(~np.isnan(therm_data), axis=0)
     valid_index = np.where(valid_ntherm == ntherm)[0]
 
@@ -1023,10 +1027,15 @@ def create_material_updated():
         f.write(prettify(xml_root))
 
 
-def kriging_temperature():
+def kriging_temperature_only_thermistor():
     """
     krig temperature to the field.
     """
+
+    da1 = joblib.load(da1_joblib)
+    sws1 = joblib.load(sws1_joblib)
+    da1["delta_day"] = np.array(
+        [(x-date_origin).total_seconds()/3600/24 for x in da1["time"]])
 
     thermistors = [x for x in list(
         da1.keys()) if x != "time" and x != "delta_day"]
@@ -1107,6 +1116,247 @@ def kriging_temperature():
         for t_index in iseg:
             print(t_index)
             # krig data for one segments
+            uk3d = UniversalKriging3D(
+                therm_x,
+                therm_y,
+                therm_z,
+                therm_data[:, t_index],
+                variogram_model='linear',
+                drift_terms=['regional_linear'])
+            k3d, ss3d = uk3d.execute('grid', x, y, z)
+            # output data to hdf5
+            temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+            group = hdf5.create_group(str(round(da1["delta_day"][t_index], 3)))
+            group.create_dataset("Temperature", data=temp_data)
+    hdf5.close()
+
+    # write xdmf files
+    for seg_index, iseg in enumerate(segments):
+        print(len(iseg))
+
+        xml_root = ET.Element("Xdmf", Version="3.0")
+        xml_domain = ET.SubElement(xml_root, "Domain")
+        # mesh
+        xml_toplogoy = ET.SubElement(xml_domain, "Topology",
+                                     {'TopologyType': '3DRECTMesh',
+                                      'Dimensions': "{0} {1} {2}".format(nz, ny, nx)})
+        xml_geometry = ET.SubElement(xml_domain, 'Geometry',
+                                     {'GeometryType': "VXVYVZ"})
+        xml_geometry_x = ET.SubElement(xml_geometry, 'DataItem',
+                                       {'Dimensions': str(nx),
+                                        "NumberType": "Float",
+                                        "Precision": "8",
+                                        "Format": "XML"})
+        xml_geometry_x.text = np.array_str(x).strip("[]").replace("\n", " ")
+        xml_geometry_y = ET.SubElement(xml_geometry, 'DataItem',
+                                       {'Dimensions': str(ny),
+                                        "NumberType": "Float",
+                                        "Precision": "8",
+                                        "Format": "XML"})
+        xml_geometry_y.text = np.array_str(y).strip("[]").replace("\n", " ")
+        xml_geometry_z = ET.SubElement(xml_geometry, 'DataItem',
+                                       {'Dimensions': str(nz),
+                                        "NumberType": "Float",
+                                        "Precision": "8",
+                                        "Format": "XML"})
+        xml_geometry_z.text = np.array_str(z).strip("[]").replace("\n", " ")
+
+        # time card
+        xml_time_grid = ET.SubElement(xml_domain, 'Grid',
+                                      {'Name': 'TimeSeries',
+                                       'GridType': 'Collection',
+                                       'CollectionType': 'Temporal'})
+        # loop over time
+        for t_index in iseg:
+            xml_itime_grid = ET.SubElement(xml_time_grid, "Grid",
+                                           {'Name': str(round(da1["delta_day"][t_index], 3)),
+                                            'GridType': 'Uniform'})
+            xml_time_attr = ET.SubElement(
+                xml_itime_grid, "Time",
+                {'Value': str(round(da1["delta_day"][t_index], 3)),
+                 "TimeType": "Single"})
+            xml_topology_ref = ET.SubElement(
+                xml_itime_grid, "Topology", {"Reference": "/Xdmf/Domain/Topology"})
+            xml_geometry_ref = ET.SubElement(
+                xml_itime_grid, "Geometry", {"Reference": "/Xdmf/Domain/Geometry"})
+            xml_itime_temperature = ET.SubElement(
+                xml_itime_grid, "Attribute",
+                {"Name": "Temperature",
+                 "AttributeType": "Scalar",
+                 "Center": "Node"})
+            xml_itime_temperature_dataitem = ET.SubElement(
+                xml_itime_temperature, "DataItem",
+                {"Format": "HDF",
+                 "NumberType": "Float",
+                 "Precision": "8",
+                 "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+            xml_itime_temperature_dataitem.text = temperature_3d_h5.split("/")[-1] + \
+                ":/"+str(round(da1["delta_day"][t_index], 3))+"/Temperature"
+
+            xml_material = ET.SubElement(
+                xml_itime_grid, "Attribute",
+                {"Name": "material",
+                 "AttributeType": "Scalar",
+                 "Center": "Node"})
+            xml_material_dataitem = ET.SubElement(
+                xml_material, "DataItem",
+                {"Format": "HDF",
+                 "NumberType": "Float",
+                 "Precision": "8",
+                 "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+            xml_material_dataitem.text = temperature_3d_h5.split("/")[-1] + \
+                ":/Materials"
+
+            xml_temperature_indicator = ET.SubElement(
+                xml_itime_grid, "Attribute",
+                {"Name": "temperature_indicator",
+                 "AttributeType": "Scalar",
+                 "Center": "Node"})
+            xml_temperature_indicator_dataitem = ET.SubElement(
+                xml_temperature_indicator, "DataItem",
+                {"Format": "HDF",
+                 "NumberType": "Float",
+                 "Precision": "8",
+                 "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+            xml_temperature_indicator_dataitem.text = temperature_3d_h5.split("/")[-1] + \
+                ":/Temperature_indicator"
+
+            xml_thickness = ET.SubElement(
+                xml_itime_grid, "Attribute",
+                {"Name": "thickness",
+                 "AttributeType": "Scalar",
+                 "Center": "Node"})
+            xml_thickness_dataitem = ET.SubElement(
+                xml_thickness, "DataItem",
+                {"Format": "HDF",
+                 "NumberType": "Float",
+                 "Precision": "8",
+                 "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+            xml_thickness_dataitem.text = temperature_3d_h5.split("/")[-1] + \
+                ":/Thickness"
+
+        # ouput xmdf
+        with open(temperature_3d_xdmf+str(seg_index)+".xdmf", 'w') as f:
+            f.write(prettify(xml_root))
+
+
+def kriging_temperature():
+    """
+    krig temperature to the field.
+    """
+
+    thermistors = [x for x in list(
+        da1.keys()) if x != "time" and x != "delta_day"]
+    ntherm = len(thermistors)
+    therm_x = np.array([da1[x]["easting"] for x in thermistors])
+    therm_y = np.array([da1[x]["northing"] for x in thermistors])
+    therm_z = np.array([da1[x]["elevation"] for x in thermistors])
+    therm_riverbed = np.array([da1[x]["riverbed"] for x in thermistors])
+    therm_data = np.array([da1[x]["temperature"] for x in thermistors])
+    therm_time = da1["time"]
+
+    # truncate sws1 data
+    sws1_time = sws1["time"][(sws1["time"] >=
+                              therm_time[0]) * (sws1["time"] <= therm_time[-1])]
+    sws1_temp = sws1["temperature"][(sws1["time"] >=
+                                     therm_time[0]) * (sws1["time"] <= therm_time[-1])]
+    sws1_level = sws1["level"][(sws1["time"] >=
+                                therm_time[0]) * (sws1["time"] <= therm_time[-1])]
+
+    # truncate thermistor data
+    therm_data = therm_data[:, (therm_time >= sws1_time[0])
+                            * (therm_time <= sws1_time[-1])]
+    therm_time = therm_time[(therm_time >= sws1_time[0])
+                            * (therm_time <= sws1_time[-1])]
+
+    # down sample therm data
+    therm_time = therm_time[np.arange(len(sws1_time))*3]
+    therm_data = therm_data[:, np.arange(len(sws1_time))*3]
+
+    # choose time segments (>30 days) with all thermistors functional
+    valid_ntherm = np.count_nonzero(~np.isnan(therm_data), axis=0)
+    valid_index = np.where(valid_ntherm > 64)[0]
+    valid_seg = np.where(np.diff(valid_index) > 1)[0]
+    segment_start = valid_index[valid_seg+1]
+    segment_end = valid_index[np.append(valid_seg[1:], -1)]
+    segments = [np.arange(start, end)
+                for start, end in zip(segment_start, segment_end)]
+    segment_length = [len(x)*15/60/24 for x in segments]
+    segments = [x for x, y in zip(segments, segment_length) if y > 30]
+#    print([len(x)*15/60/24 for x in segments])
+
+    segments = [segments[0][0:2], segments[1][0:2]]
+
+    # read material file
+    hdf5 = h5.File(material_h5, "r")
+    material_ids = hdf5["Materials"][:].reshape(
+        (nx, ny, material_nz), order="F")
+    hdf5.close()
+    # find riverbed
+    river_bed = [[np.where(material_ids[ix, iy, :] == 1)[0][-1]
+                  for iy in range(ny)] for ix in range(nx)]
+    river_bed = [[x[ix], y[iy], material_z[river_bed[ix][iy]]+0.5*material_dz[river_bed[ix][iy]]]
+                 for iy in range(ny) for ix in range(nx)]
+    river_bed = np.array(river_bed)
+
+    # use thermistor indicator to cut part of the thermistor rods
+    # hardwired for visulization purpose
+    material_ids = material_ids[:, :, -nz:]
+    temperature_indicator = np.zeros(material_ids.shape)
+    temperature_indicator[material_ids > 0] = 1
+    thickest_z = np.max(np.sum(temperature_indicator, 2))
+    x_index, y_index = np.where(np.sum(temperature_indicator, 2) == thickest_z)
+    intersect_x = max(x_index)
+    intersect_y = max(y_index)
+    # x1, y1 = x[intersect_x], y[0]
+    # x2, y2 = x[0], y[intersect_y]
+    x1, y1 = 594474, y[0]
+    x2, y2 = x[0], 116304
+    west_blank = [[ix, iy]
+                  for ix in range(nx) for iy in range(ny) if
+                  ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) < 0]
+    y2 += 18*(y2-y1)/(x1-x2)
+    x1 += 18
+    east_blank = [[ix, iy]
+                  for ix in range(nx) for iy in range(ny) if
+                  ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) > 0]
+    blank_index = np.array(east_blank+west_blank)
+    temperature_indicator[blank_index[:, 0], blank_index[:, 1], :] = 0
+
+    # thickness of current location
+    thickness = np.array([
+        [(np.cumsum(dz*(material_ids[ix, iy, ::-1]))[::-1]-0.5*dz).tolist()
+         for iy in range(ny)] for ix in range(nx)])
+    # temperature_indicator = np.ones(nx*ny*nz)
+    # # find locations near the thermistor (distance<4 m) in the model domain
+    # xyz_flatten = np.array([[ix, iy, iz] for iz in z for iy in y for ix in x])
+    # cells_near_therm = [np.where(((xyz_flatten[:, 0]-therm_x[i])**2 +
+    #                               (xyz_flatten[:, 1]-therm_y[i])**2 +
+    #                               (xyz_flatten[:, 2]-therm_z[i])**2*25) < 25)[0].tolist()
+    #                     for i in range(ntherm)]
+    # cells_near_therm = np.unique([x for y in cells_near_therm for x in y])
+    # temperature_indicator[cells_near_therm] = 1
+    # temperature_indicator = temperature_indicator.reshape(
+    #     (nx, ny, nz), order="C")
+    # hdf5.create_dataset("Temperature_indicator", data=temperature_indicator)
+    hdf5 = h5.File(temperature_3d_h5, "w")
+    hdf5.create_dataset("Materials", data=material_ids.flatten(order="F"))
+    hdf5.create_dataset("Temperature_indicator",
+                        data=temperature_indicator.flatten(order="F"))
+    hdf5.create_dataset("Thickness",
+                        data=thickness.flatten(order="F"))
+
+    for iseg in segments:
+        print(len(iseg))
+        for t_index in iseg:
+            print(t_index)
+            # krig data for one segments
+            riverbed_index = (therm_riverbed < sws1_level[t_index])
+            input_x = np.append(therm_x, therm_x[riverbed_index])
+            input_y = np.append(therm_y, therm_y[riverbed_index])
+            input_z = np.append(therm_z, therm_riverbed[riverbed_index])
+            input_data = np.append(therm_data[:, t_index],
+                                   np.ones(np.sum(riverbed_index))*sws1_temp[t_index])
             uk3d = UniversalKriging3D(
                 therm_x,
                 therm_y,
@@ -1332,10 +1582,15 @@ def plot_bath_ringold_large():
     plt.close(fig)
 
 
-def wavelet():
+def truncated_data():
+
+    da1 = joblib.load(da1_joblib)
+    sws1 = joblib.load(sws1_joblib)
+    da1["delta_day"] = np.array(
+        [(x-date_origin).total_seconds()/3600/24 for x in da1["time"]])
 
     # cut 2020 off
-    date_end = datetime.strptime("2019-11-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+    #    date_end = datetime.strptime("2019-11-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
     # read in data
     thermistors = [x for x in list(
@@ -1347,67 +1602,327 @@ def wavelet():
     therm_data = np.array([da1[x]["temperature"] for x in thermistors])
     therm_delta_day = da1["delta_day"]
     therm_time = da1["time"]
+    valid_ntherm = np.count_nonzero(~np.isnan(therm_data), axis=0)
+    gaps = np.where(valid_ntherm == 0)[0]
+    truncate_start = therm_time[gaps][therm_time[gaps] < datetime.strptime(
+        "2018-03-01 00:00:00", "%Y-%m-%d %H:%M:%S")][-1]
+    truncate_end = therm_time[gaps][therm_time[gaps] > datetime.strptime(
+        "2019-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")][0]
 
     # cut ending nan off
-    therm_data = therm_data[:, therm_time < date_end]
-    therm_delta_day = therm_delta_day[therm_time < date_end]
-    therm_time = therm_time[therm_time < date_end]
+    therm_data = therm_data[:, (therm_time > truncate_start)
+                            * (therm_time < truncate_end)]
+    therm_delta_day = therm_delta_day[(therm_time > truncate_start)
+                                      * (therm_time < truncate_end)]
+    therm_time = therm_time[(therm_time > truncate_start)
+                            * (therm_time < truncate_end)]
 
     # fill nan by simple linear interpolation
     valid_ntherm = np.count_nonzero(~np.isnan(therm_data), axis=0)
     valid_index = np.where(valid_ntherm == ntherm)[0]
-    therm_time = therm_time[:(valid_index[-1]+1)]
     therm_delta_day = therm_delta_day[:(valid_index[-1]+1)]
-    therm_data = therm_data[:, :(valid_index[-1]+1)]
-    therm_data = np.array([np.interp(therm_delta_day, therm_delta_day[valid_index], therm_data[i, valid_index])
+    therm_data = np.array([np.interp(therm_delta_day,
+                                     therm_delta_day[valid_index],
+                                     therm_data[i, valid_index])
                            for i in range(ntherm)])
+    therm_data_nan = np.empty(therm_data.shape)
+    therm_data_nan[:] = np.nan
+    therm_data_nan[:, valid_index] = therm_data[:, valid_index]
     ntime = therm_data.shape[1]
 
-    wt_coeffs = [pywt.wavedec(therm_data[i, :], "db1", mode='sym',
-                              level=None) for i in range(ntherm)]
+    therm_low = np.nanmin(therm_data, 0)
+    therm_high = np.nanmax(therm_data, 0)
 
-    # wt_coeffs_single = [[[None]*i + [x]+[None]*(len(itherm)-i-1)
-    #                      for i, x in enumerate(itherm)] for itherm in wt_coeffs]
+    date_label = ["03/01",
+                  "06/01",
+                  "09/01",
+                  "12/01"]
+    date_label_loc = [datetime.strptime(
+        x+"/2018", "%m/%y/%Y") for x in date_label]
 
-    wt_rec = [[[None]*i + [x]+[None]*(len(itherm)-i-1)
-               for i, x in enumerate(itherm)] for itherm in wt_coeffs]
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "da1_depth_2018.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        ax = axes.flatten()[therm_index]
+        ax.fill_between(therm_time, therm_low, therm_high, color="lightgrey")
+        ax.plot(
+            therm_time, therm_data[therm_index, :], color="red", label="Filled")
+        ax.plot(
+            therm_time,
+            therm_data_nan[therm_index, :], color="blue", label="Original")
+        ax.set_xlabel('Date (2018)')
+        ax.set_ylabel('Temperature $_oC$')
+        ax.set_xticks(date_label_loc)
+        ax.set_xticklabels(date_label)
+        ax.set_ylim(0, 25)
+        ax.set_title(
+            "Depth ="+"{0:.3f}".format(da1[ithermistor]["depth"])+" m")
+        ax.legend(loc="lower center")
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")
 
-   # xxx = [[pywt.waverec(x, "db1") for x in itherm]
-   #         for itherm in wt_coeffs_single]
+    # regualer dwt
+    # wt_coeffs = [pywt.wavedec(therm_data[i, :], "db1", mode='sym',
+    #                           level=None) for i in range(ntherm)]
 
-    [wt_coeffs[0], "db1"]
-    # wavelet_data = signal.detrend(river_level[:, 3])
-    # wavelet_time = river_level[:, 0]
+    # wt_coeffs = [pywt.wavedec(therm_data[i, :], "db1",  # mode='sym',
+    #                           level=15) for i in range(ntherm)]
+    # wt_rec = [[pywt.upcoef("a", y, "db1", level=len(x))[:ntime] if i == 0 else
+    #            pywt.upcoef("d", y, "db1", level=len(x)+1-i)[:ntime]
+    #            for i, y in enumerate(x)] for x in wt_coeffs]
+    # for itherm in range(ntherm):
+    #     imgfile = img_dir+"temp/"+str(itherm)+".png"
+    #     fig = plt.figure()
+    #     ax = plt.subplot(111)
+    #     xxx = np.zeros(ntime)
+    #     for x in wt_rec[itherm]:
+    #         ax.plot(therm_time, x)
+    #         xxx += x
+    #     ax.plot(therm_time, xxx, color="black")
+    #     fig.set_size_inches(16, 4)
+    #     fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    #     plt.close(fig)
+    truncated_da1 = dict()
+    truncated_da1["time"] = therm_time
+    truncated_da1["data"] = therm_data
+    truncated_da1["thermistors"] = thermistors
+    truncated_da1["northing"] = [da1[x]["northing"] for x in thermistors]
+    truncated_da1["elevation"] = [da1[x]["elevation"] for x in thermistors]
+    truncated_da1["easting"] = [da1[x]["easting"] for x in thermistors]
+    truncated_da1["riverbed"] = [da1[x]["riverbed"] for x in thermistors]
+    truncated_da1["depth"] = [da1[x]["depth"] for x in thermistors]
+    joblib.dump(truncated_da1, truncated_da1_joblib)
 
-    # # 1/pywt.scale2frequency("morl",[0.40625,1.95e4])
-    # scale_lower = 0.40625
-    # scale_upper = 1.95e4
-    # scale_n_log = 201
-    # scale_log_base = (scale_upper/scale_lower)**(1/scale_n_log)
-    # scale = scale_lower*scale_log_base**(np.arange(scale_n_log+1))
-    # coef, freq = pywt.cwt(
-    #     wavelet_data,  scale, "morl", 3600)
-    # power = (np.abs(coef))**2/(scale[:, None])
-    # period = 1/freq/3600/24
 
-    # # scale = 2**np.arange(17)
-    # # coef, freq = pywt.cwt(
-    # #     wavelet_data,  scale, "morl", 3600)
+def mean_variance():
+    def paraview_mean_temp():
+            # read material file
+        hdf5 = h5.File(material_h5, "r")
+        material_ids = hdf5["Materials"][:].reshape(
+            (nx, ny, material_nz), order="F")
+        hdf5.close()
 
-    # # power = (abs(coef))**2/(scale[:, None])
-    # # period = 1/freq/3600/24
+        # use thermistor indicator to cut part of the thermistor rods
+        # hardwired for visulization purpose
+        material_ids = material_ids[:, :, -nz:]
+        temperature_indicator = np.zeros(material_ids.shape)
+        temperature_indicator[material_ids > 0] = 1
+        thickest_z = np.max(np.sum(temperature_indicator, 2))
+        x_index, y_index = np.where(
+            np.sum(temperature_indicator, 2) == thickest_z)
+        intersect_x = max(x_index)
+        intersect_y = max(y_index)
+        # x1, y1 = x[intersect_x], y[0]
+        # x2, y2 = x[0], y[intersect_y]
+        x1, y1 = 594474, y[0]
+        x2, y2 = x[0], 116304
+        west_blank = [[ix, iy]
+                      for ix in range(nx) for iy in range(ny) if
+                      ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) < 0]
+        y2 += 18*(y2-y1)/(x1-x2)
+        x1 += 18
+        east_blank = [[ix, iy]
+                      for ix in range(nx) for iy in range(ny) if
+                      ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) > 0]
+        blank_index = np.array(east_blank+west_blank)
+        temperature_indicator[blank_index[:, 0], blank_index[:, 1], :] = 0
 
-    # # put data in pickle file
-    # cwt_stage = dict()
-    # cwt_stage["time"] = wavelet_time
-    # cwt_stage["freq"] = freq
-    # cwt_stage["scale"] = scale
-    # cwt_stage["coef"] = coef
-    # cwt_stage["power"] = power
-    # cwt_stage["period"] = period
+        # thickness of current location
+        thickness = np.array([
+            [(np.cumsum(dz*(material_ids[ix, iy, ::-1]))[::-1]-0.5*dz).tolist()
+             for iy in range(ny)] for ix in range(nx)])
 
-    # # save pt status
-    # pt_fname = case_dir+"cwt_stage.pk"
-    # file = open(pt_fname, "wb")
-    # pickle.dump(cwt_stage, file)
-    # file.close()
+        hdf5 = h5.File(mean_temperature_h5, "w")
+        hdf5.create_dataset("Materials", data=material_ids.flatten(order="F"))
+        hdf5.create_dataset("Temperature_indicator",
+                            data=temperature_indicator.flatten(order="F"))
+        hdf5.create_dataset("Thickness",
+                            data=thickness.flatten(order="F"))
+
+        # mean temperature
+        uk3d = UniversalKriging3D(
+            easting,
+            northing,
+            elevation,
+            mean_temp,
+            variogram_model='linear',
+            drift_terms=['regional_linear'])
+        k3d, ss3d = uk3d.execute('grid', x, y, z)
+        temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+        hdf5.create_dataset("Mean_temperature",
+                            data=temp_data.flatten(order="F"))
+
+        # plot std temperature
+        uk3d = UniversalKriging3D(
+            easting,
+            northing,
+            elevation,
+            std_temp,
+            variogram_model='linear',
+            drift_terms=['regional_linear'])
+        k3d, ss3d = uk3d.execute('grid', x, y, z)
+        temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+        hdf5.create_dataset("Std_temperature",
+                            data=temp_data.flatten(order="F"))
+        hdf5.close()
+
+        xml_root = ET.Element("Xdmf", Version="3.0")
+        xml_domain = ET.SubElement(xml_root, "Domain")
+        # mesh
+        xml_toplogoy = ET.SubElement(xml_domain, "Topology",
+                                     {'TopologyType': '3DRECTMesh',
+                                      'Dimensions': "{0} {1} {2}".format(nz, ny, nx)})
+        xml_geometry = ET.SubElement(xml_domain, 'Geometry',
+                                     {'GeometryType': "VXVYVZ"})
+        xml_geometry_x = ET.SubElement(xml_geometry, 'DataItem',
+                                       {'Dimensions': str(nx),
+                                        "NumberType": "Float",
+                                        "Precision": "8",
+                                        "Format": "XML"})
+        xml_geometry_x.text = np.array_str(x).strip("[]").replace("\n", " ")
+        xml_geometry_y = ET.SubElement(xml_geometry, 'DataItem',
+                                       {'Dimensions': str(ny),
+                                        "NumberType": "Float",
+                                        "Precision": "8",
+                                        "Format": "XML"})
+        xml_geometry_y.text = np.array_str(y).strip("[]").replace("\n", " ")
+        xml_geometry_z = ET.SubElement(xml_geometry, 'DataItem',
+                                       {'Dimensions': str(nz),
+                                        "NumberType": "Float",
+                                        "Precision": "8",
+                                        "Format": "XML"})
+        xml_geometry_z.text = np.array_str(z).strip("[]").replace("\n", " ")
+
+        xml_grid = ET.SubElement(xml_domain, "Grid",
+                                 {'Name': "Statistics",
+                                  'GridType': 'Uniform'})
+        xml_topology_ref = ET.SubElement(
+            xml_grid, "Topology", {"Reference": "/Xdmf/Domain/Topology"})
+        xml_geometry_ref = ET.SubElement(
+            xml_grid, "Geometry", {"Reference": "/Xdmf/Domain/Geometry"})
+
+        xml_mean_temperature = ET.SubElement(
+            xml_grid, "Attribute",
+            {"Name": "Mean temperature",
+             "AttributeType": "Scalar",
+             "Center": "Node"})
+        xml_mean_temperature_dataitem = ET.SubElement(
+            xml_mean_temperature, "DataItem",
+            {"Format": "HDF",
+             "NumberType": "Float",
+             "Precision": "8",
+             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+        xml_mean_temperature_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+            ":/Mean_temperature"
+
+        xml_std_temperature = ET.SubElement(
+            xml_grid, "Attribute",
+            {"Name": "Std temperature",
+             "AttributeType": "Scalar",
+             "Center": "Node"})
+        xml_std_temperature_dataitem = ET.SubElement(
+            xml_std_temperature, "DataItem",
+            {"Format": "HDF",
+             "NumberType": "Float",
+             "Precision": "8",
+             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+        xml_std_temperature_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+            ":/Std_temperature"
+
+        xml_material = ET.SubElement(
+            xml_grid, "Attribute",
+            {"Name": "material",
+             "AttributeType": "Scalar",
+             "Center": "Node"})
+        xml_material_dataitem = ET.SubElement(
+            xml_material, "DataItem",
+            {"Format": "HDF",
+             "NumberType": "Float",
+             "Precision": "8",
+             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+        xml_material_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+            ":/Materials"
+
+        xml_temperature_indicator = ET.SubElement(
+            xml_grid, "Attribute",
+            {"Name": "temperature_indicator",
+             "AttributeType": "Scalar",
+             "Center": "Node"})
+        xml_temperature_indicator_dataitem = ET.SubElement(
+            xml_temperature_indicator, "DataItem",
+            {"Format": "HDF",
+             "NumberType": "Float",
+             "Precision": "8",
+             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+        xml_temperature_indicator_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+            ":/Temperature_indicator"
+
+        xml_thickness = ET.SubElement(
+            xml_grid, "Attribute",
+            {"Name": "thickness",
+             "AttributeType": "Scalar",
+             "Center": "Node"})
+        xml_thickness_dataitem = ET.SubElement(
+            xml_thickness, "DataItem",
+            {"Format": "HDF",
+             "NumberType": "Float",
+             "Precision": "8",
+             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+        xml_thickness_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+            ":/Thickness"
+
+        # ouput xmdf
+        with open(mean_temperature_xdmf, 'w') as f:
+            f.write(prettify(xml_root))
+
+    da1 = joblib.load(truncated_da1_joblib)
+    time = da1["time"]
+    data = da1["data"]
+    northing = da1["northing"]
+    easting = da1["easting"]
+    riverbed = da1["riverbed"]
+    elevation = da1["elevation"]
+    depth = da1["depth"]
+    thermistors = da1["thermistors"]
+
+    mean_temp = np.mean(data, 1)
+    std_temp = np.std(data, 1)
+    cv_temp = std_temp/mean_temp
+
+#    paraview_mean_temp()
+    imgfile = img_dir+"mean_temp_vs_std.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.scatter(elevation, mean_temp)
+    fig.set_size_inches(4, 4)
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
+
+    # imgfile = img_dir+"mean_temp_vs_std.png"
+    # fig = plt.figure()
+    # ax = plt.subplot(111)
+    # ax.scatter(elevation, depth)
+    # fig.set_size_inches(4, 4)
+    # fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    # plt.close(fig)
+
+
+def plot_river_well():
+    da1 = joblib.load(truncated_da1_joblib)
+    sws1 = joblib.load(sws1_joblib)
+    imgfile = img_dir+"river.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.plot(sws1["time"], sws1["level"], color="black")
+    ax2 = ax.twinx()
+    ax.set_xlim(da1["time"][0], da1["time"][-1])
+    ax2.plot(sws1["time"], sws1["temperature"], color="blue")
+    fig.set_size_inches(10, 4)
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)

@@ -13,25 +13,33 @@ import csv
 from sklearn.externals import joblib
 from datetime import datetime, timedelta
 
+
+def find_match(array_a, array_b):
+    """
+    find index of array_a, array_b,
+    and return the indexes of (first) matched elements 
+    array_a and array_b should be sorted 1d array
+    """
+    len_b = len(array_b)
+    index_a = []
+    index_b = []
+    ind_b = 0
+    for ind_a, value_a in enumerate(array_a):
+        while (value_a >= array_b[ind_b]):
+            if value_a == array_b[ind_b]:
+                index_a.append(ind_a)
+                index_b.append(ind_b)
+            ind_b += 1
+            if ind_b == len_b:
+                return(np.array(index_a), np.array(index_b))
+
+
 data_dir = "/mnt/e/dense_array/data/"
 coord_file = data_dir+"DA1_CRiver_TM_T_Meta.csv"
 thermistor_file = data_dir+"DA1_CRiver_TM_T_Final.csv"
-sws1_file = data_dir+"SWS-1.csv"
-sws1_joblib = data_dir+"SWS-1.joblib"
 remove_index = 42  # hard wired
 da1_joblib = data_dir+"da1.joblib"
 
-with open(sws1_file, 'r') as f:
-    reader = list(csv.reader(f))
-    header = reader[0]
-    data = np.array(reader[1:])
-data[data == "NA"] = np.nan
-sws1 = dict()
-sws1["time"] = np.array([datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
-                         for x in data[:, 0]])
-sws1["level"] = data[:, 3].astype(float)
-sws1["temperature"] = data[:, 1].astype(float)
-joblib.dump(sws1, sws1_joblib)
 
 # read coordinates
 with open(coord_file, 'r') as f:
@@ -76,7 +84,8 @@ ntime = len(filled_time)
 nda1 = data.shape[1]
 filled_data = np.empty((ntime, nda1))
 filled_data[:] = np.nan
-filled_data[filled_time.searchsorted(time)] = data
+filled_time_index, therm_time_index = find_match(filled_time, time)
+filled_data[filled_time_index, :] = data[therm_time_index, :]
 
 # fill in da1 dict
 for ikey in list(da1.keys()):
