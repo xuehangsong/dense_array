@@ -41,7 +41,8 @@ rg3_correction_file = data_dir+"RG3-T3/Data-correction/RG3_WL_Corrected.csv"
 rg3_raw_file = data_dir+"RG3-T3/Data-processing/2020-02-21/RG3_Gage/RG3_Gage_Raw.csv"
 well_dir = data_dir+"well2-3/"
 river_joblib = data_dir+"river.joblib"
-well_joblib = data_dir+"well.joblib"
+#well_joblib = data_dir+"well.joblib"
+wells = ["2-1", "2-2", "2-3"]
 
 # read sws1
 with open(sws1_file, 'r') as f:
@@ -103,58 +104,61 @@ filled_river_temperature[:] = np.nan
 filled_river_temperature[filled_time_index] = rg3_temperature[rg3_time_index]
 
 # merge data
-level_index = (filled_river_level == np.nan)*(~np.isnan(filled_sws1_level))
-filled_river_level[level_index] = np.interp(
-    filled_sws1_level[level_index], corr_rg3, corr_sws1)
+level_index = (np.isnan(filled_river_level))*(~np.isnan(filled_sws1_level))
+filled_river_level[level_index] = filled_sws1_level[level_index] + \
+    np.mean(corr_rg3-corr_sws1)
+# np.interp( filled_sws1_level[level_index], corr_sws1, corr_rg3)
 valid_temperature_index = (~np.isnan(filled_river_temperature)) * \
     (~np.isnan(filled_sws1_temperature))
 rg3_valid_temperature = filled_river_temperature[valid_temperature_index]
 sws1_valid_temperature = filled_sws1_temperature[valid_temperature_index]
-temperature_index = (filled_river_temperature == np.nan) * \
+temperature_index = (np.isnan(filled_river_temperature)) * \
     (~np.isnan(filled_sws1_temperature))
-filled_river_temperature[temperature_index] = np.interp(
-    filled_sws1_temperature[temperature_index], rg3_valid_temperature, sws1_valid_temperature)
+filled_river_temperature[temperature_index] = filled_sws1_temperature[temperature_index] + \
+    np.mean(rg3_valid_temperature-sws1_valid_temperature)
+# np.interp(filled_sws1_temperature[temperature_index], sws1_valid_temperature, rg3_valid_temperature)
 
 river = dict()
-river["time"] = filled_river_temperature
+river["time"] = filled_time
 river["level"] = filled_river_level
 river["temperature"] = filled_river_temperature
 joblib.dump(river, river_joblib)
 
-well_time = []
-well_level = []
-well_temperature = []
-for ifile in np.sort(glob.glob(well_dir + "*csv")):
-    print(ifile)
-    with open(ifile, 'r') as f:
-        reader = list(csv.reader(f))
-        header = reader[0]
-        data = np.array(reader[1:])
-    data[data == 'NA'] = np.nan
-    well_time += [datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
-                  for x in data[:, 0]]
-    well_temperature += data[:, 1].tolist()
-    well_level += data[:, -1].tolist()
+for iwell in wells:
+    well_time = []
+    well_level = []
+    well_temperature = []
+    for ifile in np.sort(glob.glob(well_dir + "*399-"+iwell+"_"+"*csv")):
+        print(ifile)
+        with open(ifile, 'r') as f:
+            reader = list(csv.reader(f))
+            header = reader[0]
+            data = np.array(reader[1:])
+        data[data == 'NA'] = np.nan
+        well_time += [datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
+                      for x in data[:, 0]]
+        well_temperature += data[:, 1].tolist()
+        well_level += data[:, -1].tolist()
 
-well_time = np.array(well_time)
-well_temperature = np.array(well_temperature)
-well_level = np.array(well_level)
-filled_time = np.array(
-    [well_time[0]+timedelta(seconds=x)
-     for x in np.arange(0,
-                        (well_time[-1]-well_time[0]).total_seconds()
-                        + 900, 900)])
-ntime = len(filled_time)
-filled_time_index, well_time_index = find_match(filled_time, well_time)
-filled_well_level = np.empty((ntime))
-filled_well_level[:] = np.nan
-filled_well_level[filled_time_index] = well_level[well_time_index]
-filled_well_temperature = np.empty((ntime))
-filled_well_temperature[:] = np.nan
-filled_well_temperature[filled_time_index] = well_temperature[well_time_index]
+    well_time = np.array(well_time)
+    well_temperature = np.array(well_temperature)
+    well_level = np.array(well_level)
+    filled_time = np.array(
+        [well_time[0]+timedelta(seconds=x)
+         for x in np.arange(0,
+                            (well_time[-1]-well_time[0]).total_seconds()
+                            + 900, 900)])
+    ntime = len(filled_time)
+    filled_time_index, well_time_index = find_match(filled_time, well_time)
+    filled_well_level = np.empty((ntime))
+    filled_well_level[:] = np.nan
+    filled_well_level[filled_time_index] = well_level[well_time_index]
+    filled_well_temperature = np.empty((ntime))
+    filled_well_temperature[:] = np.nan
+    filled_well_temperature[filled_time_index] = well_temperature[well_time_index]
 
-well = dict()
-well["time"] = filled_well_temperature
-well["level"] = filled_well_level
-well["temperature"] = filled_well_temperature
-joblib.dump(well, well_joblib)
+    well = dict()
+    well["time"] = filled_time
+    well["level"] = filled_well_level
+    well["temperature"] = filled_well_temperature
+    joblib.dump(well, data_dir+"well_"+iwell+".joblib")
