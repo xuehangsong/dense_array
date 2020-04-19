@@ -35,6 +35,49 @@ import numpy as np
 from datetime import datetime, timedelta
 
 
+def dense_array_cwt(wavelet_time, wavelet_data, nscale):
+    """
+    this function is based for analysis for dense array data (measuremnt frequency is 900 seconds)
+    """
+
+    # pywt.scale2frequency("morl",[0.40625,1.95e4])/24
+    # (1/(pywt.scale2frequency("morl",[1.625,5.698e4])/900))/3600/24/365.25
+    # the scale was chose to make periods start from 1800 seconds, end ends at 2 yr
+    scale_lower = 1.625
+    scale_upper = 5.698e4
+    scale = np.logspace(np.log10(scale_lower),
+                        np.log10(scale_upper),
+                        nscale,
+                        base=10)
+
+    # for this study, the sample frequency is 900
+    coef, freq = pywt.cwt(
+        wavelet_data,  scale, "morl", 900)
+    power = (np.abs(coef))**2/(scale[:, None])
+
+    period = 1/freq/3600/24
+    wavelet_delta_time = np.array([(x-date_start).total_seconds()
+                                   for x in wavelet_time])/3600/24
+    wavelet_arch = [np.min([
+        period[-1],
+        2*x,
+        (wavelet_delta_time[-1]-x)*2])
+        for x in wavelet_delta_time]
+
+    # put data in pickle file
+    cwt_coef = dict()
+    cwt_coef["time"] = wavelet_time
+    cwt_coef["delta_time"] = wavelet_delta_time
+    cwt_coef["arch"] = wavelet_arch
+    cwt_coef["freq"] = freq
+    cwt_coef["scale"] = scale
+    cwt_coef["coef"] = coef
+    cwt_coef["power"] = power
+    cwt_coef["period"] = period
+
+    return(cwt_coef)
+
+
 def prettify(element):
     """Return a pretty-printed XML string for the Element.
     """
@@ -2304,3 +2347,112 @@ def modwt():
         ax.plot(modwt_var_mean[ithermistor][::-1])
     fig.set_size_inches(5, 4)
     fig.savefig(fig_name, dpi=300, transparent=False)
+
+
+def plot_river_long_cwt():
+    """
+    plot dev
+    """
+    river = joblib.load(river_joblib)
+
+    # define arange of data
+    date_start = datetime.strptime("2016-12-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+    date_end = datetime.strptime("2019-08-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+
+    # caculate wavelet coef
+    wavelet_level = river["level"][
+        (river["time"] >= date_start) * (river["time"] <= date_end)]
+    wavelet_temperature = river["temperature"][
+        (river["time"] >= date_start) * (river["time"] <= date_end)]
+    wavelet_time = river["time"][(
+        river["time"] >= date_start) * (river["time"] <= date_end)]
+    nscale = 200
+    level_coef = dense_array_cwt(wavelet_time, wavelet_level, nscale)
+    temperature_coef = dense_array_cwt(
+        wavelet_time, wavelet_temperature, nscale)
+
+    fig_name = img_dir + "cwt/river_stage_wavelet_long.png"
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(level_coef["time"],
+            np.log10(level_coef["arch"]),
+            color="white",
+            lw=2,
+            linestyle="--")
+    ax.fill_between(level_coef["time"],
+                    np.log10(level_coef["arch"]),
+                    len(wavelet_time)*np.log10(period[-1]),
+                    facecolor="white",
+                    alpha=0.5,
+                    zorder=10000)
+    cf = ax.contourf(level_coef["time"],
+                     np.log10(level_coef["period"]),
+                     np.log10(level_coef["power"]),
+                     levels=np.linspace(-6, 0., 100),
+                     extend="both",
+                     cmap=plt.cm.jet,
+                     zorder=1
+                     )
+    cb = plt.colorbar(cf, ax=ax, format="%.f", pad=0.01)
+    cb.ax.set_ylabel("Wavelet power spectrum (log10)",
+                     rotation=270, labelpad=20)
+    cb.set_ticks(-np.arange(7)[::-1])
+    ax.set_xlim(level_coef["time"][0], level_coef["time"][-1])
+    ax.set_ylim(np.log10(period[0]), np.log10(period[-1]))
+    ax.set_xlabel('Date')
+    ax.set_yticks(np.log10([1/24, 1, 7, 30, 365]))
+    ax.set_yticklabels(["1h", "1d", "1w", "1m", "1y"])
+    ax.set_ylabel('Periods')
+    fig.set_size_inches(10, 3)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=600, bbox_inches=0)
+    plt.close(fig)
+    print("Hello World!")
+
+    fig_name = img_dir + "cwt/river_temperature_wavelet_long.png"
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(temperature_coef["time"],
+            np.log10(temperature_coef["arch"]),
+            color="white",
+            lw=2,
+            linestyle="--")
+    ax.fill_between(temperature_coef["time"],
+                    np.log10(temperature_coef["arch"]),
+                    len(wavelet_time)*np.log10(period[-1]),
+                    facecolor="white",
+                    alpha=0.5,
+                    zorder=10000)
+    cf = ax.contourf(temperature_coef["time"],
+                     np.log10(temperature_coef["period"]),
+                     np.log10(temperature_coef["power"]),
+                     levels=np.linspace(-6, 0, 100),
+                     extend="both",
+                     cmap=plt.cm.jet,
+                     zorder=1
+                     )
+    cb = plt.colorbar(cf, ax=ax, format="%.f", pad=0.01)
+    cb.ax.set_ylabel("Wavelet power spectrum (log10)",
+                     rotation=270, labelpad=20)
+    cb.set_ticks(-np.arange(7)[::-1])
+    ax.set_xlim(temperature_coef["time"][0], temperature_coef["time"][-1])
+    ax.set_ylim(np.log10(period[0]), np.log10(period[-1]))
+    ax.set_xlabel('Date')
+    ax.set_yticks(np.log10([1/24, 1, 7, 30, 365]))
+    ax.set_yticklabels(["1h", "1d", "1w", "1m", "1y"])
+    ax.set_ylabel('Periods')
+    fig.set_size_inches(10, 3)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=600, bbox_inches=0)
+    plt.close(fig)
+    print("Hello World!")
+
+    # # save pt status
+    # pt_fname = pt_dir+"cwt_stage.pk"
+    # file = open(pt_fname, "wb")
+    # pickle.dump(cwt_stage, file)
+    # file.close()
+    # with open(pt_dir+"cwt_stage.pk", "rb") as fname:
+    #     cwt_stage = pickle.load(fname)
+    # ax.set_xticks(year_label_loc/24)
+    # ax.set_xticklabels(year_label)
