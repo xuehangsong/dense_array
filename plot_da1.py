@@ -33,6 +33,128 @@ import csv
 import copy
 import numpy as np
 from datetime import datetime, timedelta
+import matplotlib.dates as mdates
+
+
+def find_match(array_a, array_b):
+    """
+    find index of array_a, array_b,
+    and return the indexes of (first) matched elements 
+    array_a and array_b should be sorted 1d array
+    """
+    len_b = len(array_b)
+    index_a = []
+    index_b = []
+    ind_b = 0
+    for ind_a, value_a in enumerate(array_a):
+        while (value_a >= array_b[ind_b]):
+            if value_a == array_b[ind_b]:
+                index_a.append(ind_a)
+                index_b.append(ind_b)
+            ind_b += 1
+            if ind_b == len_b:
+                return(np.array(index_a), np.array(index_b))
+
+
+def plot_cwt_long(fig_name, wavelet_coef):
+    """
+    plot multiple year cwt
+    """
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(wavelet_coef["time"],
+            np.log10(wavelet_coef["arch"]),
+            color="white",
+            lw=2,
+            linestyle="--")
+    ax.fill_between(wavelet_coef["time"],
+                    np.log10(wavelet_coef["arch"]),
+                    len(wavelet_coef["time"]) *
+                    np.log10(wavelet_coef["period"][-1]),
+                    facecolor="white",
+                    alpha=0.5,
+                    zorder=10000)
+    cf = ax.contourf(wavelet_coef["time"],
+                     np.log10(wavelet_coef["period"]),
+                     np.log10(wavelet_coef["power"]),
+                     levels=np.linspace(-6, 0., 100),
+                     extend="both",
+                     cmap=plt.cm.jet,
+                     zorder=1
+                     )
+    cb = plt.colorbar(cf, ax=ax, format="%.f", pad=0.01)
+    cb.ax.set_ylabel("Wavelet power spectrum (log10)",
+                     rotation=270, labelpad=20)
+    cb.set_ticks(-np.arange(7)[::-1])
+    ax.set_xlim(wavelet_coef["time"][0], wavelet_coef["time"][-1])
+    ax.set_ylim(np.log10(wavelet_coef["period"][0]),
+                np.log10(wavelet_coef["period"][-1]))
+    ax.set_xlabel('Date')
+    ax.set_yticks(np.log10([1/24, 1, 7, 30, 365]))
+    ax.set_yticklabels(["1h", "1d", "1w", "1m", "1y"])
+    ax.set_ylabel('Period (log10)')
+    fig.set_size_inches(10, 3)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=600, bbox_inches=0)
+    plt.close(fig)
+    print("Hello World!")
+
+
+def plot_cwt_short(fig_name, wavelet_coef, title):
+    """
+    plot multiple year cwt
+    """
+
+    date_label = ["2018-03-01",
+                  "2018-06-01",
+                  "2018-09-01",
+                  "2018-12-01"]
+    date_label_loc = [datetime.strptime(x, "%Y-%m-%d")
+                      for x in date_label]
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(wavelet_coef["time"],
+            np.log10(wavelet_coef["arch"]),
+            color="white",
+            lw=2,
+            linestyle="--")
+    ax.fill_between(wavelet_coef["time"],
+                    np.log10(wavelet_coef["arch"]),
+                    len(wavelet_coef["time"]) *
+                    np.log10(wavelet_coef["period"][-1]),
+                    facecolor="white",
+                    alpha=0.5,
+                    zorder=10000)
+    cf = ax.contourf(wavelet_coef["time"],
+                     np.log10(wavelet_coef["period"]),
+                     np.log10(wavelet_coef["power"]),
+                     levels=np.linspace(-6, 0., 100),
+                     extend="both",
+                     cmap=plt.cm.jet,
+                     zorder=1
+                     )
+    cb = plt.colorbar(cf, ax=ax, format="%.f", pad=0.02)
+    cb.ax.set_ylabel("Wavelet power spectrum (log10)",
+                     rotation=270, labelpad=15)
+    cb.set_ticks(-np.arange(7)[::-1])
+    ax.set_xlim(wavelet_coef["time"][0], wavelet_coef["time"][-1])
+    ax.set_ylim(np.log10(wavelet_coef["period"][0]),
+                np.log10(wavelet_coef["period"][-1]))
+    ax.set_xlabel('Date')
+    ax.set_title(title)
+    ax.set_xticks(date_label_loc)
+    ax.set_xticklabels(date_label)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+    ax.set_yticks(np.log10([1/24, 1, 7, 30, 365]))
+    ax.set_yticklabels(["1h", "1d", "1w", "1m", "1y"])
+    ax.set_ylabel('Period (log10)')
+    fig.set_size_inches(5.2, 3)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=600, bbox_inches=0)
+    plt.close(fig)
+    print("Hello World!")
 
 
 def dense_array_cwt(wavelet_time, wavelet_data, nscale):
@@ -56,7 +178,7 @@ def dense_array_cwt(wavelet_time, wavelet_data, nscale):
     power = (np.abs(coef))**2/(scale[:, None])
 
     period = 1/freq/3600/24
-    wavelet_delta_time = np.array([(x-date_start).total_seconds()
+    wavelet_delta_time = np.array([(x-wavelet_time[0]).total_seconds()
                                    for x in wavelet_time])/3600/24
     wavelet_arch = [np.min([
         period[-1],
@@ -1783,210 +1905,236 @@ def truncated_data():
     joblib.dump(truncated_da1, truncated_da1_joblib)
 
 
+def paraview_mean_temp():
+        # read material file
+    hdf5 = h5.File(material_h5, "r")
+    material_ids = hdf5["Materials"][:].reshape(
+        (nx, ny, material_nz), order="F")
+    hdf5.close()
+
+    # use thermistor indicator to cut part of the thermistor rods
+    # hardwired for visulization purpose
+    material_ids = material_ids[:, :, -nz:]
+    temperature_indicator = np.zeros(material_ids.shape)
+    temperature_indicator[material_ids > 0] = 1
+    thickest_z = np.max(np.sum(temperature_indicator, 2))
+    x_index, y_index = np.where(
+        np.sum(temperature_indicator, 2) == thickest_z)
+    intersect_x = max(x_index)
+    intersect_y = max(y_index)
+    # x1, y1 = x[intersect_x], y[0]
+    # x2, y2 = x[0], y[intersect_y]
+    x1, y1 = 594474, y[0]
+    x2, y2 = x[0], 116304
+    west_blank = [[ix, iy]
+                  for ix in range(nx) for iy in range(ny) if
+                  ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) < 0]
+    y2 += 18*(y2-y1)/(x1-x2)
+    x1 += 18
+    east_blank = [[ix, iy]
+                  for ix in range(nx) for iy in range(ny) if
+                  ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) > 0]
+    blank_index = np.array(east_blank+west_blank)
+    temperature_indicator[blank_index[:, 0], blank_index[:, 1], :] = 0
+
+    # thickness of current location
+    thickness = np.array([
+        [(np.cumsum(dz*(material_ids[ix, iy, ::-1]))[::-1]-0.5*dz).tolist()
+         for iy in range(ny)] for ix in range(nx)])
+
+    hdf5 = h5.File(mean_temperature_h5, "w")
+    hdf5.create_dataset("Materials", data=material_ids.flatten(order="F"))
+    hdf5.create_dataset("Temperature_indicator",
+                        data=temperature_indicator.flatten(order="F"))
+    hdf5.create_dataset("Thickness",
+                        data=thickness.flatten(order="F"))
+
+    # mean temperature
+    uk3d = UniversalKriging3D(
+        easting,
+        northing,
+        elevation,
+        mean_temp,
+        variogram_model='linear',
+        drift_terms=['regional_linear'])
+    k3d, ss3d = uk3d.execute('grid', x, y, z)
+    temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+    hdf5.create_dataset("Mean_temperature",
+                        data=temp_data.flatten(order="F"))
+
+    # plot std temperature
+    uk3d = UniversalKriging3D(
+        easting,
+        northing,
+        elevation,
+        std_temp,
+        variogram_model='linear',
+        drift_terms=['regional_linear'])
+    k3d, ss3d = uk3d.execute('grid', x, y, z)
+    temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+    hdf5.create_dataset("Std_temperature",
+                        data=temp_data.flatten(order="F"))
+    hdf5.close()
+
+    xml_root = ET.Element("Xdmf", Version="3.0")
+    xml_domain = ET.SubElement(xml_root, "Domain")
+    # mesh
+    xml_toplogoy = ET.SubElement(xml_domain, "Topology",
+                                 {'TopologyType': '3DRECTMesh',
+                                  'Dimensions': "{0} {1} {2}".format(nz, ny, nx)})
+    xml_geometry = ET.SubElement(xml_domain, 'Geometry',
+                                 {'GeometryType': "VXVYVZ"})
+    xml_geometry_x = ET.SubElement(xml_geometry, 'DataItem',
+                                   {'Dimensions': str(nx),
+                                    "NumberType": "Float",
+                                    "Precision": "8",
+                                    "Format": "XML"})
+    xml_geometry_x.text = np.array_str(x).strip("[]").replace("\n", " ")
+    xml_geometry_y = ET.SubElement(xml_geometry, 'DataItem',
+                                   {'Dimensions': str(ny),
+                                    "NumberType": "Float",
+                                    "Precision": "8",
+                                    "Format": "XML"})
+    xml_geometry_y.text = np.array_str(y).strip("[]").replace("\n", " ")
+    xml_geometry_z = ET.SubElement(xml_geometry, 'DataItem',
+                                   {'Dimensions': str(nz),
+                                    "NumberType": "Float",
+                                    "Precision": "8",
+                                    "Format": "XML"})
+    xml_geometry_z.text = np.array_str(z).strip("[]").replace("\n", " ")
+
+    xml_grid = ET.SubElement(xml_domain, "Grid",
+                             {'Name': "Statistics",
+                              'GridType': 'Uniform'})
+    xml_topology_ref = ET.SubElement(
+        xml_grid, "Topology", {"Reference": "/Xdmf/Domain/Topology"})
+    xml_geometry_ref = ET.SubElement(
+        xml_grid, "Geometry", {"Reference": "/Xdmf/Domain/Geometry"})
+
+    xml_mean_temperature = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "Mean temperature",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_mean_temperature_dataitem = ET.SubElement(
+        xml_mean_temperature, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_mean_temperature_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+        ":/Mean_temperature"
+
+    xml_std_temperature = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "Std temperature",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_std_temperature_dataitem = ET.SubElement(
+        xml_std_temperature, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_std_temperature_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+        ":/Std_temperature"
+
+    xml_material = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "material",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_material_dataitem = ET.SubElement(
+        xml_material, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_material_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+        ":/Materials"
+
+    xml_temperature_indicator = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "temperature_indicator",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_temperature_indicator_dataitem = ET.SubElement(
+        xml_temperature_indicator, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_temperature_indicator_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+        ":/Temperature_indicator"
+
+    xml_thickness = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "thickness",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_thickness_dataitem = ET.SubElement(
+        xml_thickness, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_thickness_dataitem.text = mean_temperature_h5.split("/")[-1] + \
+        ":/Thickness"
+
+    # ouput xmdf
+    with open(mean_temperature_xdmf, 'w') as f:
+        f.write(prettify(xml_root))
+
+
 def plot_mean_variance():
-    def paraview_mean_temp():
-            # read material file
-        hdf5 = h5.File(material_h5, "r")
-        material_ids = hdf5["Materials"][:].reshape(
-            (nx, ny, material_nz), order="F")
-        hdf5.close()
 
-        # use thermistor indicator to cut part of the thermistor rods
-        # hardwired for visulization purpose
-        material_ids = material_ids[:, :, -nz:]
-        temperature_indicator = np.zeros(material_ids.shape)
-        temperature_indicator[material_ids > 0] = 1
-        thickest_z = np.max(np.sum(temperature_indicator, 2))
-        x_index, y_index = np.where(
-            np.sum(temperature_indicator, 2) == thickest_z)
-        intersect_x = max(x_index)
-        intersect_y = max(y_index)
-        # x1, y1 = x[intersect_x], y[0]
-        # x2, y2 = x[0], y[intersect_y]
-        x1, y1 = 594474, y[0]
-        x2, y2 = x[0], 116304
-        west_blank = [[ix, iy]
-                      for ix in range(nx) for iy in range(ny) if
-                      ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) < 0]
-        y2 += 18*(y2-y1)/(x1-x2)
-        x1 += 18
-        east_blank = [[ix, iy]
-                      for ix in range(nx) for iy in range(ny) if
-                      ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) > 0]
-        blank_index = np.array(east_blank+west_blank)
-        temperature_indicator[blank_index[:, 0], blank_index[:, 1], :] = 0
-
-        # thickness of current location
-        thickness = np.array([
-            [(np.cumsum(dz*(material_ids[ix, iy, ::-1]))[::-1]-0.5*dz).tolist()
-             for iy in range(ny)] for ix in range(nx)])
-
-        hdf5 = h5.File(mean_temperature_h5, "w")
-        hdf5.create_dataset("Materials", data=material_ids.flatten(order="F"))
-        hdf5.create_dataset("Temperature_indicator",
-                            data=temperature_indicator.flatten(order="F"))
-        hdf5.create_dataset("Thickness",
-                            data=thickness.flatten(order="F"))
-
-        # mean temperature
-        uk3d = UniversalKriging3D(
-            easting,
-            northing,
-            elevation,
-            mean_temp,
-            variogram_model='linear',
-            drift_terms=['regional_linear'])
-        k3d, ss3d = uk3d.execute('grid', x, y, z)
-        temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
-        hdf5.create_dataset("Mean_temperature",
-                            data=temp_data.flatten(order="F"))
-
-        # plot std temperature
-        uk3d = UniversalKriging3D(
-            easting,
-            northing,
-            elevation,
-            std_temp,
-            variogram_model='linear',
-            drift_terms=['regional_linear'])
-        k3d, ss3d = uk3d.execute('grid', x, y, z)
-        temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
-        hdf5.create_dataset("Std_temperature",
-                            data=temp_data.flatten(order="F"))
-        hdf5.close()
-
-        xml_root = ET.Element("Xdmf", Version="3.0")
-        xml_domain = ET.SubElement(xml_root, "Domain")
-        # mesh
-        xml_toplogoy = ET.SubElement(xml_domain, "Topology",
-                                     {'TopologyType': '3DRECTMesh',
-                                      'Dimensions': "{0} {1} {2}".format(nz, ny, nx)})
-        xml_geometry = ET.SubElement(xml_domain, 'Geometry',
-                                     {'GeometryType': "VXVYVZ"})
-        xml_geometry_x = ET.SubElement(xml_geometry, 'DataItem',
-                                       {'Dimensions': str(nx),
-                                        "NumberType": "Float",
-                                        "Precision": "8",
-                                        "Format": "XML"})
-        xml_geometry_x.text = np.array_str(x).strip("[]").replace("\n", " ")
-        xml_geometry_y = ET.SubElement(xml_geometry, 'DataItem',
-                                       {'Dimensions': str(ny),
-                                        "NumberType": "Float",
-                                        "Precision": "8",
-                                        "Format": "XML"})
-        xml_geometry_y.text = np.array_str(y).strip("[]").replace("\n", " ")
-        xml_geometry_z = ET.SubElement(xml_geometry, 'DataItem',
-                                       {'Dimensions': str(nz),
-                                        "NumberType": "Float",
-                                        "Precision": "8",
-                                        "Format": "XML"})
-        xml_geometry_z.text = np.array_str(z).strip("[]").replace("\n", " ")
-
-        xml_grid = ET.SubElement(xml_domain, "Grid",
-                                 {'Name': "Statistics",
-                                  'GridType': 'Uniform'})
-        xml_topology_ref = ET.SubElement(
-            xml_grid, "Topology", {"Reference": "/Xdmf/Domain/Topology"})
-        xml_geometry_ref = ET.SubElement(
-            xml_grid, "Geometry", {"Reference": "/Xdmf/Domain/Geometry"})
-
-        xml_mean_temperature = ET.SubElement(
-            xml_grid, "Attribute",
-            {"Name": "Mean temperature",
-             "AttributeType": "Scalar",
-             "Center": "Node"})
-        xml_mean_temperature_dataitem = ET.SubElement(
-            xml_mean_temperature, "DataItem",
-            {"Format": "HDF",
-             "NumberType": "Float",
-             "Precision": "8",
-             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
-        xml_mean_temperature_dataitem.text = mean_temperature_h5.split("/")[-1] + \
-            ":/Mean_temperature"
-
-        xml_std_temperature = ET.SubElement(
-            xml_grid, "Attribute",
-            {"Name": "Std temperature",
-             "AttributeType": "Scalar",
-             "Center": "Node"})
-        xml_std_temperature_dataitem = ET.SubElement(
-            xml_std_temperature, "DataItem",
-            {"Format": "HDF",
-             "NumberType": "Float",
-             "Precision": "8",
-             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
-        xml_std_temperature_dataitem.text = mean_temperature_h5.split("/")[-1] + \
-            ":/Std_temperature"
-
-        xml_material = ET.SubElement(
-            xml_grid, "Attribute",
-            {"Name": "material",
-             "AttributeType": "Scalar",
-             "Center": "Node"})
-        xml_material_dataitem = ET.SubElement(
-            xml_material, "DataItem",
-            {"Format": "HDF",
-             "NumberType": "Float",
-             "Precision": "8",
-             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
-        xml_material_dataitem.text = mean_temperature_h5.split("/")[-1] + \
-            ":/Materials"
-
-        xml_temperature_indicator = ET.SubElement(
-            xml_grid, "Attribute",
-            {"Name": "temperature_indicator",
-             "AttributeType": "Scalar",
-             "Center": "Node"})
-        xml_temperature_indicator_dataitem = ET.SubElement(
-            xml_temperature_indicator, "DataItem",
-            {"Format": "HDF",
-             "NumberType": "Float",
-             "Precision": "8",
-             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
-        xml_temperature_indicator_dataitem.text = mean_temperature_h5.split("/")[-1] + \
-            ":/Temperature_indicator"
-
-        xml_thickness = ET.SubElement(
-            xml_grid, "Attribute",
-            {"Name": "thickness",
-             "AttributeType": "Scalar",
-             "Center": "Node"})
-        xml_thickness_dataitem = ET.SubElement(
-            xml_thickness, "DataItem",
-            {"Format": "HDF",
-             "NumberType": "Float",
-             "Precision": "8",
-             "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
-        xml_thickness_dataitem.text = mean_temperature_h5.split("/")[-1] + \
-            ":/Thickness"
-
-        # ouput xmdf
-        with open(mean_temperature_xdmf, 'w') as f:
-            f.write(prettify(xml_root))
-
+    # load data
     da1 = joblib.load(truncated_da1_joblib)
-    time = np.array(da1["time"])
-    data = np.array(da1["data"])
+    river = joblib.load(river_joblib)
+
+    # read value from dict
     northing = np.array(da1["northing"])
     easting = np.array(da1["easting"])
     riverbed = np.array(da1["riverbed"])
     elevation = np.array(da1["elevation"])
     depth = np.array(da1["depth"])
     thermistors = np.array(da1["thermistors"])
+    time = np.array(da1["time"])
+    data = np.array(da1["data"])
 
+    # make sure river and themistor uses the same periods
+    time = river["time"][(river["time"] >= da1["time"][0]) *
+                         (river["time"] <= da1["time"][-1])]
+    river_temperature = river["temperature"][(river["time"] >= time[0]) *
+                                             (river["time"] <= time[-1])]
+    data = np.array(da1["data"])[:, find_match(time, da1["time"])[-1]]
+
+    # mean thermistor
     mean_temp = np.mean(data, 1)
     std_temp = np.std(data, 1)
     cv_temp = std_temp/mean_temp
 
+    # mean river
+    mean_river = np.mean(river_temperature)
+    std_river = np.std(river_temperature)
+    cv_river = std_river/mean_river
+
+    # locate groups
     riverbed_group = [np.where(riverbed < 104.2)[0],
                       np.where((riverbed > 104.2)*(riverbed < 105.2))[0],
                       np.where(riverbed > 105.2)[0]]
     riverbed_group_names = ["104 m", "104.5 m", "105.5 m"]
     riverbed_group_color = ["green", "black", "red"]
 
-    imgfile = img_dir+"VS_mean_temp_std_temp.png"
+    imgfile = img_dir+"scatter/VS_mean_temp_std_temp.png"
     fig = plt.figure()
     ax = plt.subplot(111)
+    ax.scatter(mean_river, std_river,
+               edgecolor="blue",
+               facecolor="blue",
+               s=30,
+               marker="^",
+               label="River")
     for group_index, igroup in enumerate(riverbed_group):
         ax.scatter(mean_temp[igroup], std_temp[igroup],
                    edgecolor=riverbed_group_color[group_index],
@@ -2137,6 +2285,8 @@ def plot_mean_variance():
                         hspace=0.3)
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
+
+    # paraview_mean_temp()
 
 
 def plot_river_well():
@@ -2349,103 +2499,126 @@ def modwt():
     fig.savefig(fig_name, dpi=300, transparent=False)
 
 
-def plot_river_long_cwt():
+def plot_river_well_cwt():
     """
     plot dev
     """
     river = joblib.load(river_joblib)
+    well2_3 = joblib.load(well2_3_joblib)
 
     # define arange of data
-    date_start = datetime.strptime("2016-12-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+    date_start = datetime.strptime("2017-02-01 00:00:00", "%Y-%m-%d %H:%M:%S")
     date_end = datetime.strptime("2019-08-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
     # caculate wavelet coef
-    wavelet_level = river["level"][
+    river_level = river["level"][
         (river["time"] >= date_start) * (river["time"] <= date_end)]
-    wavelet_temperature = river["temperature"][
+    river_temperature = river["temperature"][
         (river["time"] >= date_start) * (river["time"] <= date_end)]
-    wavelet_time = river["time"][(
+    river_time = river["time"][(
         river["time"] >= date_start) * (river["time"] <= date_end)]
+    well2_3_level = well2_3["level"][
+        (well2_3["time"] >= date_start) * (well2_3["time"] <= date_end)]
+    well2_3_temperature = well2_3["temperature"][
+        (well2_3["time"] >= date_start) * (well2_3["time"] <= date_end)]
+    well2_3_time = well2_3["time"][(
+        well2_3["time"] >= date_start) * (well2_3["time"] <= date_end)]
+
+    # number of scale
     nscale = 200
-    level_coef = dense_array_cwt(wavelet_time, wavelet_level, nscale)
-    temperature_coef = dense_array_cwt(
-        wavelet_time, wavelet_temperature, nscale)
 
-    fig_name = img_dir + "cwt/river_stage_wavelet_long.png"
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.plot(level_coef["time"],
-            np.log10(level_coef["arch"]),
-            color="white",
-            lw=2,
-            linestyle="--")
-    ax.fill_between(level_coef["time"],
-                    np.log10(level_coef["arch"]),
-                    len(wavelet_time)*np.log10(period[-1]),
-                    facecolor="white",
-                    alpha=0.5,
-                    zorder=10000)
-    cf = ax.contourf(level_coef["time"],
-                     np.log10(level_coef["period"]),
-                     np.log10(level_coef["power"]),
-                     levels=np.linspace(-6, 0., 100),
-                     extend="both",
-                     cmap=plt.cm.jet,
-                     zorder=1
-                     )
-    cb = plt.colorbar(cf, ax=ax, format="%.f", pad=0.01)
-    cb.ax.set_ylabel("Wavelet power spectrum (log10)",
-                     rotation=270, labelpad=20)
-    cb.set_ticks(-np.arange(7)[::-1])
-    ax.set_xlim(level_coef["time"][0], level_coef["time"][-1])
-    ax.set_ylim(np.log10(period[0]), np.log10(period[-1]))
-    ax.set_xlabel('Date')
-    ax.set_yticks(np.log10([1/24, 1, 7, 30, 365]))
-    ax.set_yticklabels(["1h", "1d", "1w", "1m", "1y"])
-    ax.set_ylabel('Periods')
-    fig.set_size_inches(10, 3)
-    fig.tight_layout()
-    fig.savefig(fig_name, dpi=600, bbox_inches=0)
-    plt.close(fig)
-    print("Hello World!")
+    # river level
+    river_level_coef = dense_array_cwt(river_time, river_level, nscale)
+    fig_name = img_dir + "cwt/river_level_long.png"
+    plot_cwt_long(fig_name, river_level_coef)
 
-    fig_name = img_dir + "cwt/river_temperature_wavelet_long.png"
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.plot(temperature_coef["time"],
-            np.log10(temperature_coef["arch"]),
-            color="white",
-            lw=2,
-            linestyle="--")
-    ax.fill_between(temperature_coef["time"],
-                    np.log10(temperature_coef["arch"]),
-                    len(wavelet_time)*np.log10(period[-1]),
-                    facecolor="white",
-                    alpha=0.5,
-                    zorder=10000)
-    cf = ax.contourf(temperature_coef["time"],
-                     np.log10(temperature_coef["period"]),
-                     np.log10(temperature_coef["power"]),
-                     levels=np.linspace(-6, 0, 100),
-                     extend="both",
-                     cmap=plt.cm.jet,
-                     zorder=1
-                     )
-    cb = plt.colorbar(cf, ax=ax, format="%.f", pad=0.01)
-    cb.ax.set_ylabel("Wavelet power spectrum (log10)",
-                     rotation=270, labelpad=20)
-    cb.set_ticks(-np.arange(7)[::-1])
-    ax.set_xlim(temperature_coef["time"][0], temperature_coef["time"][-1])
-    ax.set_ylim(np.log10(period[0]), np.log10(period[-1]))
-    ax.set_xlabel('Date')
-    ax.set_yticks(np.log10([1/24, 1, 7, 30, 365]))
-    ax.set_yticklabels(["1h", "1d", "1w", "1m", "1y"])
-    ax.set_ylabel('Periods')
-    fig.set_size_inches(10, 3)
-    fig.tight_layout()
-    fig.savefig(fig_name, dpi=600, bbox_inches=0)
-    plt.close(fig)
-    print("Hello World!")
+    # river temperature
+    river_temperature_coef = dense_array_cwt(
+        river_time, river_temperature, nscale)
+    fig_name = img_dir + "cwt/river_temperature_long.png"
+    plot_cwt_long(fig_name, river_temperature_coef)
+
+    # well2_3 level
+    well2_3_level_coef = dense_array_cwt(
+        well2_3_time, well2_3_level, nscale)
+    fig_name = img_dir + "cwt/well2_3_level_long.png"
+    plot_cwt_long(fig_name, well2_3_level_coef)
+
+    # well2_3 temperature
+    well2_3_temperature_coef = dense_array_cwt(
+        well2_3_time, well2_3_temperature, nscale)
+    fig_name = img_dir + "cwt/well2_3_temperature_long.png"
+    plot_cwt_long(fig_name, well2_3_temperature_coef)
+
+
+def plot_thermistor_cwt():
+    """
+    plot cwt of thermistors
+    """
+
+    # load data
+    thermistors = joblib.load(truncated_da1_joblib)
+    river = joblib.load(river_joblib)
+    well2_3 = joblib.load(well2_3_joblib)
+
+    # clean data
+    time = river["time"][(river["time"] >= thermistors["time"][0]) *
+                         (river["time"] <= thermistors["time"][-1])]
+    river_level = river["level"][(river["time"] >= time[0]) *
+                                 (river["time"] <= time[-1])]
+    well_level = well2_3["level"][(well2_3["time"] >= time[0]) *
+                                  (well2_3["time"] <= time[-1])]
+    river_temperature = river["temperature"][(river["time"] >= time[0]) *
+                                             (river["time"] <= time[-1])]
+    well_temperature = well2_3["temperature"][(well2_3["time"] >= time[0]) *
+                                              (well2_3["time"] <= time[-1])]
+    thermistor_data = thermistors["data"][:,
+                                          find_match(time, thermistors["time"])[-1]]
+
+    nscale = 200
+    # plot well
+    well_cwt = dense_array_cwt(
+        time, well_temperature, nscale)
+    fig_name = img_dir + "cwt/short/"+"well.png"
+    plot_cwt_short(fig_name, well_cwt, "Well")
+
+    # plot river
+    river_cwt = dense_array_cwt(
+        time, river_temperature, nscale)
+    fig_name = img_dir + "cwt/short/"+"river.png"
+    plot_cwt_short(fig_name, river_cwt, "River")
+
+    # plot well
+    well_cwt = dense_array_cwt(
+        time, well_level, nscale)
+    fig_name = img_dir + "cwt/short/"+"well_level.png"
+    plot_cwt_short(fig_name, well_cwt, "Well")
+
+    # plot river
+    river_cwt = dense_array_cwt(
+        time, river_level, nscale)
+    fig_name = img_dir + "cwt/short/"+"river_level.png"
+    plot_cwt_short(fig_name, river_cwt, "River")
+
+    for thermistor_index, ithermistor in enumerate(thermistors["thermistors"]):
+        print(ithermistor)
+        therm_cwt = dense_array_cwt(
+            time, thermistor_data[thermistor_index, :], nscale)
+        fig_name = img_dir + "cwt/short/"+ithermistor+".png"
+        title = ("Elevation = " +
+                 str(np.round(thermistors["elevation"][thermistor_index], 3)) +
+                 " m; Depth = " +
+                 str(np.round(thermistors["depth"][thermistor_index], 3))+" m")
+        plot_cwt_short(fig_name, therm_cwt, title)
+
+
+def tobe():
+    cwt1 = dense_array_cwt(time, river_level, nscale)
+    cwt2 = dense_array_cwt(time, well_level, nscale)
+    coef1 = cwt1["coef"]
+    coef2 = cwt2["coef"]
+    coef12 = coef1*np.conj(coef2)
+    wcoh = coef12**2/(coef1*coef2)
 
     # # save pt status
     # pt_fname = pt_dir+"cwt_stage.pk"
