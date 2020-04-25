@@ -35,14 +35,42 @@ def find_match(array_a, array_b):
                 return(np.array(index_a), np.array(index_b))
 
 
+# directory
 data_dir = "/mnt/e/dense_array/data/"
 sws1_file = data_dir+"SWS-1.csv"
 rg3_correction_file = data_dir+"RG3-T3/Data-correction/RG3_WL_Corrected.csv"
 rg3_raw_file = data_dir+"RG3-T3/Data-processing/2020-02-21/RG3_Gage/RG3_Gage_Raw.csv"
+air_file = data_dir+"300A_hsite_obs.csv"
 well_dir = data_dir+"well2-3/"
 river_joblib = data_dir+"river.joblib"
-#well_joblib = data_dir+"well.joblib"
 wells = ["2-1", "2-2", "2-3"]
+
+
+# read air_file
+with open(air_file, 'r') as f:
+    reader = list(csv.reader(f))
+    header = reader[0]
+    data = np.array(reader[1:])
+data[data == "NA"] = np.nan
+air_time = np.array([datetime.strptime(x.split(".")[0], "%Y-%m-%d %H:%M:%S")
+                     for x in data[:, 0]])
+air_temperature = data[:, 5].astype(float)
+filled_time = np.array(
+    [air_time[0]+timedelta(seconds=x)
+     for x in np.arange(0,
+                        (air_time[-1]-air_time[0]).total_seconds()
+                        + 900, 900)])
+ntime = len(filled_time)
+filled_time_index, air_time_index = find_match(filled_time, air_time)
+filled_air_temperature = np.empty((ntime))
+filled_air_temperature[:] = np.nan
+filled_air_temperature[filled_time_index] = air_temperature[air_time_index]
+
+air = dict()
+air["time"] = filled_time
+air["temperature"] = filled_air_temperature
+
+joblib.dump(air, data_dir+"air.joblib")
 
 # read sws1
 with open(sws1_file, 'r') as f:

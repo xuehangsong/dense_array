@@ -290,6 +290,7 @@ geo_unit_file = data_dir+"300A_EV_surfaces_012612.dat"
 bathymetry_file = data_dir+"g_bathymetry_v3_clip_2nd.asc"
 da1_joblib = data_dir+"da1.joblib"
 river_joblib = data_dir+"river.joblib"
+air_joblib = data_dir+"air.joblib"
 well2_1_joblib = data_dir+"well_2-1.joblib"
 well2_2_joblib = data_dir+"well_2-2.joblib"
 well2_3_joblib = data_dir+"well_2-3.joblib"
@@ -2091,6 +2092,7 @@ def plot_mean_variance():
     # load data
     da1 = joblib.load(truncated_da1_joblib)
     river = joblib.load(river_joblib)
+    air = joblib.load(air_joblib)
 
     # read value from dict
     northing = np.array(da1["northing"])
@@ -2107,6 +2109,12 @@ def plot_mean_variance():
                          (river["time"] <= da1["time"][-1])]
     river_temperature = river["temperature"][(river["time"] >= time[0]) *
                                              (river["time"] <= time[-1])]
+    air_temperature = air["temperature"][(air["time"] >= time[0]) *
+                                         (air["time"] <= time[-1])]
+    air_temperature = np.interp(
+        np.arange(len(time)),
+        np.arange(len(time))[~np.isnan(air_temperature)],
+        air_temperature[~np.isnan(air_temperature)])
     data = np.array(da1["data"])[:, find_match(time, da1["time"])[-1]]
 
     # mean thermistor
@@ -2118,6 +2126,11 @@ def plot_mean_variance():
     mean_river = np.mean(river_temperature)
     std_river = np.std(river_temperature)
     cv_river = std_river/mean_river
+
+    # mean air
+    mean_air = np.mean(air_temperature)
+    std_air = np.std(air_temperature)
+    cv_air = std_air/mean_air
 
     # locate groups
     riverbed_group = [np.where(riverbed < 104.2)[0],
@@ -2154,7 +2167,41 @@ def plot_mean_variance():
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
 
-    imgfile = img_dir+"VS_elevation_mean_temp.png"
+    imgfile = img_dir+"scatter/VS_mean_temp_std_temp_with_air.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.scatter(mean_air, std_air,
+               edgecolor="Orange",
+               facecolor="Orange",
+               s=30,
+               marker="*",
+               label="Air")
+    ax.scatter(mean_river, std_river,
+               edgecolor="blue",
+               facecolor="blue",
+               s=30,
+               marker="^",
+               label="River")
+    for group_index, igroup in enumerate(riverbed_group):
+        ax.scatter(mean_temp[igroup], std_temp[igroup],
+                   edgecolor=riverbed_group_color[group_index],
+                   facecolor="none",
+                   s=30,
+                   label=riverbed_group_names[group_index])
+    ax.set_xlabel("Mean temperature ($^o$C)")
+    ax.set_ylabel("SD of temperature ($^o$C)")
+    ax.legend()
+    fig.set_size_inches(4, 3.5)
+    fig.subplots_adjust(left=0.2,
+                        right=0.9,
+                        bottom=0.15,
+                        top=0.95,
+                        wspace=0.25,
+                        hspace=0.3)
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
+
+    imgfile = img_dir+"scatter/VS_elevation_mean_temp.png"
     fig = plt.figure()
     ax = plt.subplot(111)
     for group_index, igroup in enumerate(riverbed_group):
@@ -2176,7 +2223,7 @@ def plot_mean_variance():
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
 
-    imgfile = img_dir+"VS_elevation_std_temp.png"
+    imgfile = img_dir+"scatter/VS_elevation_std_temp.png"
     fig = plt.figure()
     ax = plt.subplot(111)
     for group_index, igroup in enumerate(riverbed_group):
@@ -2198,7 +2245,7 @@ def plot_mean_variance():
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
 
-    imgfile = img_dir+"VS_depth_mean_temp.png"
+    imgfile = img_dir+"scatter/VS_depth_mean_temp.png"
     fig = plt.figure()
     ax = plt.subplot(111)
     for group_index, igroup in enumerate(riverbed_group):
@@ -2220,7 +2267,7 @@ def plot_mean_variance():
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
 
-    imgfile = img_dir+"VS_depth_std_temp.png"
+    imgfile = img_dir+"scatter/VS_depth_std_temp.png"
     fig = plt.figure()
     ax = plt.subplot(111)
     for group_index, igroup in enumerate(riverbed_group):
@@ -2242,7 +2289,7 @@ def plot_mean_variance():
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
 
-    imgfile = img_dir+"VS_riverbed_mean_temp.png"
+    imgfile = img_dir+"scatter/VS_riverbed_mean_temp.png"
     fig = plt.figure()
     ax = plt.subplot(111)
     for group_index, igroup in enumerate(riverbed_group):
@@ -2264,7 +2311,7 @@ def plot_mean_variance():
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
 
-    imgfile = img_dir+"VS_riverbed_std_temp.png"
+    imgfile = img_dir+"scatter/VS_riverbed_std_temp.png"
     fig = plt.figure()
     ax = plt.subplot(111)
     for group_index, igroup in enumerate(riverbed_group):
@@ -2289,8 +2336,27 @@ def plot_mean_variance():
     # paraview_mean_temp()
 
 
-def plot_river_well():
+def plot_air():
+    # plot air temperture time series
+    air = joblib.load(air_joblib)
+    imgfile = img_dir+"air_temperature.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.plot(air["time"],
+            air["temperature"],
+            lw=0.5,
+            color="orange", label="Air")
+    ax.set_ylabel('Temperature ($^oC$)')
+    ax.set_xlim(air["time"][0], air["time"][-1])
+#    ax.set_ylim(104, 109.5)
+    ax.legend(loc="upper left", frameon=False, ncol=4)
+    fig.set_size_inches(10, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
 
+
+def plot_river_well():
+    # plot rive well time series
     da1 = joblib.load(da1_joblib)
     da1["delta_day"] = np.array(
         [(x-date_origin).total_seconds()/3600/24 for x in da1["time"]])
