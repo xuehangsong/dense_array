@@ -295,6 +295,7 @@ well2_1_joblib = data_dir+"well_2-1.joblib"
 well2_2_joblib = data_dir+"well_2-2.joblib"
 well2_3_joblib = data_dir+"well_2-3.joblib"
 truncated_da1_joblib = data_dir+"truncated_da1.joblib"
+cwt_joblib = data_dir+"cwt.joblib"
 well_file = "/mnt/e/rtd/Data/Observation_Data/well_coordinates_all.csv"
 # output
 results_dir = "/mnt/e/dense_array/results/"
@@ -2087,12 +2088,16 @@ def paraview_mean_temp():
         f.write(prettify(xml_root))
 
 
-def plot_mean_variance():
+def plot_mean_variance_scatter():
+    """
+    plot scatter plots of mean and variance
+    """
 
     # load data
     da1 = joblib.load(truncated_da1_joblib)
     river = joblib.load(river_joblib)
     air = joblib.load(air_joblib)
+    well2_3 = joblib.load(well2_3_joblib)
 
     # read value from dict
     northing = np.array(da1["northing"])
@@ -2111,10 +2116,22 @@ def plot_mean_variance():
                                              (river["time"] <= time[-1])]
     air_temperature = air["temperature"][(air["time"] >= time[0]) *
                                          (air["time"] <= time[-1])]
+    well_temperature = well2_3["temperature"][(well2_3["time"] >= time[0]) *
+                                              (well2_3["time"] <= time[-1])]
+
+    # air temperature
     air_temperature = np.interp(
         np.arange(len(time)),
         np.arange(len(time))[~np.isnan(air_temperature)],
         air_temperature[~np.isnan(air_temperature)])
+
+    # well temperature
+    well_temperature = np.interp(
+        np.arange(len(time)),
+        np.arange(len(time))[~np.isnan(well_temperature)],
+        well_temperature[~np.isnan(well_temperature)])
+
+    # thermistor
     data = np.array(da1["data"])[:, find_match(time, da1["time"])[-1]]
 
     # mean thermistor
@@ -2132,72 +2149,90 @@ def plot_mean_variance():
     std_air = np.std(air_temperature)
     cv_air = std_air/mean_air
 
+    # mean well
+    mean_well = np.mean(well_temperature)
+    std_well = np.std(well_temperature)
+    cv_well = std_well/mean_well
+
     # locate groups
     riverbed_group = [np.where(riverbed < 104.2)[0],
                       np.where((riverbed > 104.2)*(riverbed < 105.2))[0],
                       np.where(riverbed > 105.2)[0]]
     riverbed_group_names = ["104 m", "104.5 m", "105.5 m"]
-    riverbed_group_color = ["green", "black", "red"]
+    riverbed_group_color = ["green", "purple", "black"]
 
-    imgfile = img_dir+"scatter/VS_mean_temp_std_temp.png"
+    imgfile = img_dir+"scatter/VS_std_temp_mean_temp.png"
     fig = plt.figure()
     ax = plt.subplot(111)
-    ax.scatter(mean_river, std_river,
+    ax.scatter(std_river, mean_river,
                edgecolor="blue",
                facecolor="blue",
                s=30,
                marker="^",
                label="River")
+    ax.scatter(std_well, mean_well,
+               edgecolor="red",
+               facecolor="red",
+               s=30,
+               marker="^",
+               label="Well 2-3")
+    ax.set_aspect(1)
     for group_index, igroup in enumerate(riverbed_group):
-        ax.scatter(mean_temp[igroup], std_temp[igroup],
+        ax.scatter(std_temp[igroup], mean_temp[igroup],
                    edgecolor=riverbed_group_color[group_index],
                    facecolor="none",
                    s=30,
                    label=riverbed_group_names[group_index])
-    ax.set_xlabel("Mean temperature ($^o$C)")
-    ax.set_ylabel("SD of temperature ($^o$C)")
+    ax.set_xlabel("SD temperature ($^o$C)")
+    ax.set_ylabel("Mean of temperature ($^o$C)")
+    ax.set_xticks(np.arange(6)+1)
+    ax.set_yticks(np.arange(5)+10)
+    ax.set_ylim(10.8, 13.7)
+    ax.set_xlim(1.6, 6)
     ax.legend()
-    fig.set_size_inches(4, 3.5)
-    fig.subplots_adjust(left=0.2,
-                        right=0.9,
-                        bottom=0.15,
-                        top=0.95,
-                        wspace=0.25,
-                        hspace=0.3)
+    fig.set_size_inches(5, 3.5)
+    fig.tight_layout()
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
 
-    imgfile = img_dir+"scatter/VS_mean_temp_std_temp_with_air.png"
+    imgfile = img_dir+"scatter/VS_std_temp_mean_temp_with_air.png"
     fig = plt.figure()
     ax = plt.subplot(111)
-    ax.scatter(mean_air, std_air,
+    ax.scatter(std_air,
+               mean_air,
                edgecolor="Orange",
                facecolor="Orange",
                s=30,
                marker="*",
                label="Air")
-    ax.scatter(mean_river, std_river,
+    ax.scatter(std_river, mean_river,
                edgecolor="blue",
                facecolor="blue",
                s=30,
                marker="^",
                label="River")
+    ax.scatter(std_well, mean_well,
+               edgecolor="red",
+               facecolor="red",
+               s=30,
+               marker="^",
+               label="Well 2-3")
+    ax.set_aspect(1)
     for group_index, igroup in enumerate(riverbed_group):
-        ax.scatter(mean_temp[igroup], std_temp[igroup],
+        ax.scatter(std_temp[igroup], mean_temp[igroup],
                    edgecolor=riverbed_group_color[group_index],
                    facecolor="none",
                    s=30,
                    label=riverbed_group_names[group_index])
-    ax.set_xlabel("Mean temperature ($^o$C)")
-    ax.set_ylabel("SD of temperature ($^o$C)")
-    ax.legend()
-    fig.set_size_inches(4, 3.5)
-    fig.subplots_adjust(left=0.2,
-                        right=0.9,
-                        bottom=0.15,
-                        top=0.95,
-                        wspace=0.25,
-                        hspace=0.3)
+    ax.set_xlabel("SD temperature ($^o$C)")
+    ax.set_ylabel("Mean of temperature ($^o$C)")
+    ax.set_xticks(np.arange(12)+1)
+    ax.set_yticks(np.arange(5)+10)
+    ax.set_ylim(10.8, 13.7)
+    ax.set_xlim(1.6, 10.3)
+    ax.legend(loc="lower right", ncol=2)
+    fig.set_size_inches(9, 3.5)
+    fig.tight_layout()
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
     plt.close(fig)
 
@@ -2355,7 +2390,121 @@ def plot_air():
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
 
 
-def plot_river_well():
+def plot_river_well_moving_average():
+    """
+    plot moving average
+    """
+    moving_window = int(365.25*24*60/15)
+    title = "yearly"
+    # between 2018/02/19 and 2019/02/06
+    moving_window = int(352.40972222222223*24*60/15)
+    title = "352.4-day"
+
+    # moving average of river
+    river = joblib.load(river_joblib)
+    river_time = river["time"]
+    river_temperature = np.interp(
+        np.arange(len(river_time)),
+        np.arange(len(river_time))[~np.isnan(river["temperature"])],
+        river["temperature"][~np.isnan(river["temperature"])])
+    river_ma = np.convolve(
+        river_temperature,
+        np.ones((moving_window,))/moving_window,
+        mode='same')
+    river_ma[0:int(moving_window/2)] = np.nan
+    river_ma[-int(moving_window/2):] = np.nan
+
+    # moving average of well
+    well = joblib.load(well2_3_joblib)
+    well_time = well["time"][
+        (well["time"] >= river_time[0])*(well["time"] <= river_time[-1])]
+    well_temperature = well["temperature"][
+        (well["time"] >= river_time[0])*(well["time"] <= river_time[-1])]
+    well_temperature = np.interp(
+        np.arange(len(well_time)),
+        np.arange(len(well_time))[~np.isnan(well_temperature)],
+        well_temperature[~np.isnan(well_temperature)])
+    well_ma = np.convolve(
+        well_temperature,
+        np.ones((moving_window,))/moving_window,
+        mode='same')
+    well_ma[0:int(moving_window/2)] = np.nan
+    well_ma[-int(moving_window/2):] = np.nan
+
+    imgfile = img_dir+"ts/river_groundwater_temperature_ma"+title+".png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.plot(river_time,
+            river_temperature,
+            lw=0.5,
+            color="blue",
+            label="River")
+    ax.plot(river_time,
+            river_ma,
+            lw=3,
+            color="cyan",
+            label="River, "+title+" averaged")
+    ax.plot(well_time,
+            well_temperature,
+            lw=0.5,
+            color="red",
+            label="Well")
+    ax.plot(well_time,
+            well_ma,
+            lw=3,
+            color="pink",
+            label="Well 2-3, "+title+" averaged")
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Temperature ($^oC$)')
+    ax.set_xlim(river["time"][0], river["time"][-1])
+    ax.set_ylim(0, 25)
+    ax.legend(loc="upper left", frameon=False, ncol=5)
+    fig.set_size_inches(10, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+
+    imgfile = img_dir+"ts/river_groundwater_temperature_ma_narrow"+title+".png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.plot(river_time,
+            river_ma,
+            lw=3,
+            color="cyan",
+            label="River, yearly averaged")
+    ax.plot(well_time,
+            well_ma,
+            lw=3,
+            color="pink",
+            label="Well 2-3, "+title+" averaged")
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Temperature ($^oC$)')
+    ax.set_xlim(river["time"][0], river["time"][-1])
+    ax.set_ylim(10, 18)
+    ax.legend(loc="upper left", frameon=False, ncol=5)
+    fig.set_size_inches(10, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+
+    imgfile = img_dir+"ts/river_temperature_ma"+title+".png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.plot(river_time,
+            river_ma,
+            lw=3,
+            color="cyan",
+            label="River, "+title+" averaged")
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Temperature ($^oC$)')
+    ax.set_xlim(river["time"][0], river["time"][-1])
+    ax.set_yticks(np.arange(20))
+    ax.set_ylim(10.5, 13)
+    ax.legend(loc="upper left", frameon=False, ncol=5)
+    fig.set_size_inches(10, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+
+
+def plot_river_well_ts():
     # plot rive well time series
     da1 = joblib.load(da1_joblib)
     da1["delta_day"] = np.array(
@@ -2640,6 +2789,7 @@ def plot_thermistor_cwt():
                                               (well2_3["time"] <= time[-1])]
     thermistor_data = thermistors["data"][:,
                                           find_match(time, thermistors["time"])[-1]]
+    cwt_all = dict()
 
     nscale = 200
     # plot well
@@ -2647,24 +2797,28 @@ def plot_thermistor_cwt():
         time, well_temperature, nscale)
     fig_name = img_dir + "cwt/short/"+"well.png"
     plot_cwt_short(fig_name, well_cwt, "Well")
+    cwt_all["well"] = well_cwt
 
     # plot river
     river_cwt = dense_array_cwt(
         time, river_temperature, nscale)
     fig_name = img_dir + "cwt/short/"+"river.png"
     plot_cwt_short(fig_name, river_cwt, "River")
+    cwt_all["river"] = river_cwt
 
-    # plot well
+    # plot well level
     well_cwt = dense_array_cwt(
         time, well_level, nscale)
     fig_name = img_dir + "cwt/short/"+"well_level.png"
     plot_cwt_short(fig_name, well_cwt, "Well")
+    cwt_all["well_level"] = well_cwt
 
     # plot river
     river_cwt = dense_array_cwt(
         time, river_level, nscale)
     fig_name = img_dir + "cwt/short/"+"river_level.png"
     plot_cwt_short(fig_name, river_cwt, "River")
+    cwt_all["river_level"] = river_cwt
 
     for thermistor_index, ithermistor in enumerate(thermistors["thermistors"]):
         print(ithermistor)
@@ -2676,6 +2830,8 @@ def plot_thermistor_cwt():
                  " m; Depth = " +
                  str(np.round(thermistors["depth"][thermistor_index], 3))+" m")
         plot_cwt_short(fig_name, therm_cwt, title)
+        cwt_all[ithermistor] = therm_cwt
+    joblib.dump(cwt_all, cwt_joblib)
 
 
 def tobe():
@@ -2695,3 +2851,79 @@ def tobe():
     #     cwt_stage = pickle.load(fname)
     # ax.set_xticks(year_label_loc/24)
     # ax.set_xticklabels(year_label)
+
+
+def plot_gradients():
+
+   # load data
+    thermistors = joblib.load(truncated_da1_joblib)
+    river = joblib.load(river_joblib)
+    well2_3 = joblib.load(well2_3_joblib)
+
+    # clean data
+    time = river["time"][(river["time"] >= thermistors["time"][0]) *
+                         (river["time"] <= thermistors["time"][-1])]
+    river_level = river["level"][(river["time"] >= time[0]) *
+                                 (river["time"] <= time[-1])]
+    well_level = well2_3["level"][(well2_3["time"] >= time[0]) *
+                                  (well2_3["time"] <= time[-1])]
+    river_temperature = river["temperature"][(river["time"] >= time[0]) *
+                                             (river["time"] <= time[-1])]
+    well_temperature = well2_3["temperature"][(well2_3["time"] >= time[0]) *
+                                              (well2_3["time"] <= time[-1])]
+    thermistor_data = thermistors["data"][
+        :,
+        find_match(time, thermistors["time"])[-1]]
+
+    date_label = ["03/01",
+                  "06/01",
+                  "09/01",
+                  "12/01"]
+    date_label_loc = [datetime.strptime(
+        x+"/2018", "%m/%y/%Y") for x in date_label]
+
+    imgfile = img_dir+"gradients/gradients_ts.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.plot(time, river_level-well_level,
+            lw=0.5,
+            color="black", label="River - Well 2-3")
+    ax.set_xlabel('Date (2018)')
+    ax.set_ylabel('Water level (m)')
+    ax.set_xticks(date_label_loc)
+    ax.set_xticklabels(date_label)
+    ax.set_xlim(time[0], time[-1])
+    ax.set_yticks(np.arange(100)*0.5-10)
+    ax.set_ylim(-1, 1.5)
+    ax.legend(loc="upper right", frameon=False)
+    fig.set_size_inches(5, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+
+    imgfile = img_dir+"gradients/gradients_hist.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.hist(river_level-well_level,
+            bins=np.arange(-1, 1.5, 0.05),
+            lw=0.5,
+            density=True,
+            color="blue",
+            edgecolor='black')
+    ax.set_ylabel("Density")
+    ax.set_xlabel("\u0394h (m)")
+    fig.set_size_inches(5, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+
+    imgfile = img_dir+"gradients/hist_2d.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.hist2d(
+        river_temperature,
+        river_level-well_level,
+        bins=100)
+    # ax.set_ylabel("Density")
+    # ax.set_xlabel("\u0394h (m)")
+    fig.set_size_inches(5, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
