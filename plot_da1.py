@@ -316,6 +316,9 @@ temperature_3d_xdmf = paraview_dir+"3d_temperature_"
 mean_temperature_h5 = paraview_dir+"mean_temperature.h5"
 mean_temperature_xdmf = paraview_dir+"mean_temperature.xdmf"
 
+daily_power_h5 = paraview_dir+"daily_power.h5"
+daily_power_xdmf = paraview_dir+"daily_power.xdmf"
+
 
 # load preprocessed data
 # da1 = joblib.load(da1_joblib)
@@ -2789,7 +2792,7 @@ def plot_thermistor_cwt():
                                               (well2_3["time"] <= time[-1])]
     thermistor_data = thermistors["data"][:,
                                           find_match(time, thermistors["time"])[-1]]
-    cwt_all = dict()
+#    cwt_all = dict()
 
     nscale = 200
     # plot well
@@ -2797,41 +2800,42 @@ def plot_thermistor_cwt():
         time, well_temperature, nscale)
     fig_name = img_dir + "cwt/short/"+"well.png"
     plot_cwt_short(fig_name, well_cwt, "Well")
-    cwt_all["well"] = well_cwt
+    joblib.dump(well_cwt, results_dir+"cwt/well.joblib")
 
     # plot river
     river_cwt = dense_array_cwt(
         time, river_temperature, nscale)
     fig_name = img_dir + "cwt/short/"+"river.png"
     plot_cwt_short(fig_name, river_cwt, "River")
-    cwt_all["river"] = river_cwt
+    joblib.dump(river_cwt, results_dir+"cwt/river.joblib")
 
     # plot well level
     well_cwt = dense_array_cwt(
         time, well_level, nscale)
     fig_name = img_dir + "cwt/short/"+"well_level.png"
     plot_cwt_short(fig_name, well_cwt, "Well")
-    cwt_all["well_level"] = well_cwt
+    joblib.dump(well_cwt, results_dir+"cwt/well_level.joblib")
 
     # plot river
     river_cwt = dense_array_cwt(
         time, river_level, nscale)
     fig_name = img_dir + "cwt/short/"+"river_level.png"
     plot_cwt_short(fig_name, river_cwt, "River")
-    cwt_all["river_level"] = river_cwt
+    joblib.dump(river_cwt, results_dir+"cwt/river_level.joblib")
 
     for thermistor_index, ithermistor in enumerate(thermistors["thermistors"]):
         print(ithermistor)
-        therm_cwt = dense_array_cwt(
-            time, thermistor_data[thermistor_index, :], nscale)
-        fig_name = img_dir + "cwt/short/"+ithermistor+".png"
-        title = ("Elevation = " +
-                 str(np.round(thermistors["elevation"][thermistor_index], 3)) +
-                 " m; Depth = " +
-                 str(np.round(thermistors["depth"][thermistor_index], 3))+" m")
-        plot_cwt_short(fig_name, therm_cwt, title)
-        cwt_all[ithermistor] = therm_cwt
-    joblib.dump(cwt_all, cwt_joblib)
+        print(thermistor_index)
+        if ithermistor == "TM_M1_T_Avg32":
+            therm_cwt = dense_array_cwt(
+                time, thermistor_data[thermistor_index, :], nscale)
+            fig_name = img_dir + "cwt/short/"+ithermistor+".png"
+            title = ("Elevation = " +
+                     str(np.round(thermistors["elevation"][thermistor_index], 3)) +
+                     " m; Depth = " +
+                     str(np.round(thermistors["depth"][thermistor_index], 3))+" m")
+            plot_cwt_short(fig_name, therm_cwt, title)
+            joblib.dump(therm_cwt, results_dir+ithermistor+".joblib")
 
 
 def tobe():
@@ -2889,7 +2893,7 @@ def plot_gradients():
             lw=0.5,
             color="black", label="River - Well 2-3")
     ax.set_xlabel('Date (2018)')
-    ax.set_ylabel('Water level (m)')
+    ax.set_xlabel("\u0394h (m)")
     ax.set_xticks(date_label_loc)
     ax.set_xticklabels(date_label)
     ax.set_xlim(time[0], time[-1])
@@ -2927,3 +2931,492 @@ def plot_gradients():
     fig.set_size_inches(5, 3.5)
     fig.tight_layout()
     fig.savefig(imgfile, bbox_inches=0, dpi=300)
+
+
+def plot_gradients_long():
+
+   # load data
+    thermistors = joblib.load(truncated_da1_joblib)
+    river = joblib.load(river_joblib)
+    well2_3 = joblib.load(well2_3_joblib)
+
+    # clean data
+    time = river["time"]
+    river_level = river["level"][(river["time"] >= time[0]) *
+                                 (river["time"] <= time[-1])]
+    well_level = well2_3["level"][(well2_3["time"] >= time[0]) *
+                                  (well2_3["time"] <= time[-1])]
+    river_temperature = river["temperature"][(river["time"] >= time[0]) *
+                                             (river["time"] <= time[-1])]
+    well_temperature = well2_3["temperature"][(well2_3["time"] >= time[0]) *
+                                              (well2_3["time"] <= time[-1])]
+
+    well_temperature = np.interp(
+        np.arange(len(time)),
+        np.arange(len(time))[~np.isnan(well_temperature)],
+        well_temperature[~np.isnan(well_temperature)])
+
+    river_temperature = np.interp(
+        np.arange(len(time)),
+        np.arange(len(time))[~np.isnan(river_temperature)],
+        river_temperature[~np.isnan(river_temperature)])
+
+    well_level = np.interp(
+        np.arange(len(time)),
+        np.arange(len(time))[~np.isnan(well_level)],
+        well_level[~np.isnan(well_level)])
+
+    river_level = np.interp(
+        np.arange(len(time)),
+        np.arange(len(time))[~np.isnan(river_level)],
+        river_level[~np.isnan(river_level)])
+
+    moving_window = int(365.25*24*60/15)
+    river_ma = np.convolve(
+        river_level,
+        np.ones((moving_window,))/moving_window,
+        mode='same')
+    river_ma[0:int(moving_window/2)] = np.nan
+    river_ma[-int(moving_window/2):] = np.nan
+
+    well_ma = np.convolve(
+        well_level,
+        np.ones((moving_window,))/moving_window,
+        mode='same')
+    well_ma[0:int(moving_window/2)] = np.nan
+    well_ma[-int(moving_window/2):] = np.nan
+
+    imgfile = img_dir+"gradients/gradients_ts_long.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.plot(time, river_level-well_level,
+            lw=0.5,
+            color="black", label="River - Well 2-3")
+    ax.set_xlabel('Date (2018)')
+    ax.set_ylabel('\u0394h (m)')
+    ax.set_xlim(time[0], time[-1])
+    ax.set_yticks(np.arange(100)*0.5-10)
+    ax.set_ylim(-1, 1.5)
+    ax.legend(loc="upper right", frameon=False)
+    fig.set_size_inches(10, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
+
+    imgfile = img_dir+"gradients/gradients_ts_long_ma.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.plot(time, river_ma-well_ma,
+            lw=0.5,
+            color="black", label="River - Well 2-3")
+    ax.set_xlabel('Date (2018)')
+    ax.set_ylabel('\u0394h (m)')
+    ax.set_xlim(time[0], time[-1])
+    ax.legend(loc="upper right", frameon=False)
+    fig.set_size_inches(10, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
+
+    imgfile = img_dir+"gradients/gradients_hist_long.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.hist(river_level-well_level,
+            bins=np.arange(-1, 1.5, 0.05),
+            lw=0.5,
+            density=True,
+            color="blue",
+            edgecolor='black')
+    ax.set_ylabel("Density")
+    ax.set_xlabel("\u0394h (m)")
+    fig.set_size_inches(5, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
+
+    imgfile = img_dir+"gradients/hist_2d.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.hist2d(
+        river_temperature,
+        river_level-well_level,
+        bins=100)
+    # ax.set_ylabel("Density")
+    # ax.set_xlabel("\u0394h (m)")
+    fig.set_size_inches(5, 3.5)
+    fig.tight_layout()
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
+
+
+def plot_average_cwt():
+
+    thermistors = joblib.load(truncated_da1_joblib)
+
+    average_power = dict()
+    # well
+    cwt_data = joblib.load(results_dir+"cwt/well.joblib")
+    time = cwt_data["time"]
+    delta_time = cwt_data["delta_time"]
+    freq = cwt_data["freq"]
+    scale = cwt_data["scale"]
+    period = cwt_data["period"]
+    arch = cwt_data["arch"]
+    arch_array = np.tile(np.expand_dims(np.array(arch), 0), (len(period), 1))
+    arch_indicator = np.tile(np.expand_dims(
+        period, 1), (1, len(time)))-arch_array
+    arch_indicator[arch_indicator >= 0] = np.nan
+    arch_indicator[arch_indicator < 0] = 1
+
+    # average power
+    average_power["well"] = np.nanmean(
+        cwt_data["power"]*arch_indicator, axis=1)
+    # river
+    cwt_data = joblib.load(results_dir+"cwt/river.joblib")
+    average_power["river"] = np.nanmean(
+        cwt_data["power"]*arch_indicator, axis=1)
+
+    # load thermistor
+    for thermistor_index, ithermistor in enumerate(thermistors["thermistors"]):
+        print(thermistor_index)
+        cwt_data = joblib.load(results_dir+ithermistor+".joblib")
+        average_power[ithermistor] = np.nanmean(
+            cwt_data["power"]*arch_indicator, axis=1)
+
+    imgfile = img_dir+"cwt/average.png"
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(
+        np.log10(average_power["river"]),
+        np.log10(period),
+        zorder=200,
+        color="blue",
+        lw=2)
+    ax.plot(
+        np.log10(average_power["well"]),
+        np.log10(period),
+        zorder=300,
+        color="red",
+        lw=2)
+    for ithermistor in thermistors["thermistors"]:
+        ax.plot(
+            np.log10(average_power[ithermistor]),
+            np.log10(period),
+            color="gray",
+            zorder=1,
+            lw=0.5)
+    ax.set_ylim(np.log10(period[0]),
+                np.log10(period[-1]))
+    ax.set_yticks(np.log10([1/24, 1, 7, 30, 365]))
+    ax.set_ylabel('Period (log10)')
+    ax.set_xlabel("Wavelet power spectrum (log10)")
+    ax.set_yticklabels(["1h", "1d", "1w", "1m", "1y"])
+    fig.set_size_inches(4, 7)
+    fig.tight_layout()
+    fig.savefig(imgfile, dpi=600, bbox_inches=0)
+    plt.close(fig)
+    print("Hello World!")
+    # cf = ax.contourf(wavelet_coef["time"],
+    #                  np.log10(wavelet_coef["period"]),
+    #                  np.log10(wavelet_coef["power"]),
+    #                  levels=np.linspace(-6, 0., 100),
+    #                  extend="both",
+    #                  cmap=plt.cm.jet,
+    #                  zorder=1
+    #                  )
+    # cb = plt.colorbar(cf, ax=ax, format="%.f", pad=0.02)
+    # cb.set_ticks(-np.arange(7)[::-1])
+    # ax.set_xlim(wavelet_coef["time"][0], wavelet_coef["time"][-1])
+    # ax.set_ylim(np.log10(wavelet_coef["period"][0]),
+    #             np.log10(wavelet_coef["period"][-1]))
+    # ax.set_xlabel('Date')
+    # ax.set_title(title)
+    # ax.set_xticks(date_label_loc)
+    # ax.set_xticklabels(date_label)
+    # ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+    # ax.set_yticks(np.log10([1/24, 1, 7, 30, 365]))
+
+
+def plot_sd_sorted_thermistors():
+
+    # load data
+    truncated_da1 = joblib.load(truncated_da1_joblib)
+    thermistors = np.array(truncated_da1["thermistors"])
+    therm_depth = np.array(truncated_da1["depth"])
+    therm_elevation = np.array(truncated_da1["elevation"])
+    therm_riverbed = np.array(truncated_da1["riverbed"])
+    therm_data = np.array(truncated_da1["data"])
+    therm_time = np.array(truncated_da1["time"])
+
+    # sort by standard devation
+    std_temp = np.std(truncated_da1["data"], 1)
+    std_index = np.argsort(std_temp)
+    thermistors = thermistors[std_index]
+    therm_depth = therm_depth[std_index]
+    therm_elevation = therm_elevation[std_index]
+    therm_riverbed = therm_riverbed[std_index]
+    therm_data = therm_data[std_index, :]
+    std_temp = std_temp[std_index]
+
+    therm_low = np.nanmin(therm_data, 0)
+    therm_high = np.nanmax(therm_data, 0)
+
+    date_label = ["03/01",
+                  "06/01",
+                  "09/01",
+                  "12/01"]
+    date_label_loc = [datetime.strptime(
+        x+"/2018", "%m/%y/%Y") for x in date_label]
+
+    ntherm = len(thermistors)
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "ts/da1_sd_2018.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        ax = axes.flatten()[therm_index]
+        ax.fill_between(therm_time, therm_low, therm_high,
+                        color="lightgrey", label="Range")
+        ax.plot(
+            therm_time, therm_data[therm_index, :], color="black", label="Filled")
+        ax.set_xlabel('Date (2018)')
+        ax.set_ylabel('Temperature $_oC$')
+        ax.set_xticks(date_label_loc)
+        ax.set_xticklabels(date_label)
+        ax.set_ylim(0, 25)
+        ax.set_title(
+            "Depth ="+"{0:.3f}".format(therm_depth[therm_index])+" m")
+        ax.legend(loc="lower center", frameon=False)
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")
+
+
+def plot_power_sorted_thermistors():
+
+    # load data
+    truncated_da1 = joblib.load(truncated_da1_joblib)
+    thermistors = np.array(truncated_da1["thermistors"])
+    therm_depth = np.array(truncated_da1["depth"])
+    therm_elevation = np.array(truncated_da1["elevation"])
+    therm_riverbed = np.array(truncated_da1["riverbed"])
+    therm_data = np.array(truncated_da1["data"])
+    therm_time = np.array(truncated_da1["time"])
+    easting = np.array(truncated_da1["easting"])
+    northing = np.array(truncated_da1["northing"])
+    elevation = np.array(truncated_da1["elevation"])
+
+    # load thermistor
+    average_power = dict()
+    for thermistor_index, ithermistor in enumerate(thermistors):
+        print(thermistor_index)
+        cwt_data = joblib.load(results_dir+ithermistor+".joblib")
+        average_power[ithermistor] = np.nanmean(
+            cwt_data["power"]*arch_indicator, axis=1)
+
+    daily_power = []
+    for ithermistor in thermistors:
+        daily_power.append(np.interp(1, period, average_power[ithermistor]))
+    daily_power = np.array(daily_power)
+
+    power_index = np.argsort(daily_power)
+    thermistors = thermistors[power_index]
+    therm_depth = therm_depth[power_index]
+    therm_elevation = therm_elevation[power_index]
+    therm_riverbed = therm_riverbed[power_index]
+    therm_data = therm_data[power_index, :]
+    daily_power = daily_power[power_index]
+    easting = easting[power_index]
+    northing = northing[power_index]
+    elevation = elevation[power_index]
+
+    date_label = ["03/01",
+                  "06/01",
+                  "09/01",
+                  "12/01"]
+    date_label_loc = [datetime.strptime(
+        x+"/2018", "%m/%y/%Y") for x in date_label]
+
+    ntherm = len(thermistors)
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "ts/da1_power_2018.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        ax = axes.flatten()[therm_index]
+        ax.fill_between(therm_time, therm_low, therm_high,
+                        color="lightgrey", label="Range")
+        ax.plot(
+            therm_time, therm_data[therm_index, :], color="black", label="Filled")
+        ax.set_xlabel('Date (2018)')
+        ax.set_ylabel('Temperature $_oC$')
+        ax.set_xticks(date_label_loc)
+        ax.set_xticklabels(date_label)
+        ax.set_ylim(0, 25)
+        ax.set_title(
+            "Depth ="+"{0:.3f}".format(therm_depth[therm_index])+" m")
+        ax.legend(loc="lower center", frameon=False)
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")
+
+    # output paraview
+    # read material file
+    hdf5 = h5.File(material_h5, "r")
+    material_ids = hdf5["Materials"][:].reshape(
+        (nx, ny, material_nz), order="F")
+    hdf5.close()
+
+    # use thermistor indicator to cut part of the thermistor rods
+    # hardwired for visulization purpose
+    material_ids = material_ids[:, :, -nz:]
+    temperature_indicator = np.zeros(material_ids.shape)
+    temperature_indicator[material_ids > 0] = 1
+    thickest_z = np.max(np.sum(temperature_indicator, 2))
+    x_index, y_index = np.where(
+        np.sum(temperature_indicator, 2) == thickest_z)
+    intersect_x = max(x_index)
+    intersect_y = max(y_index)
+    # x1, y1 = x[intersect_x], y[0]
+    # x2, y2 = x[0], y[intersect_y]
+    x1, y1 = 594474, y[0]
+    x2, y2 = x[0], 116304
+    west_blank = [[ix, iy]
+                  for ix in range(nx) for iy in range(ny) if
+                  ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) < 0]
+    y2 += 18*(y2-y1)/(x1-x2)
+    x1 += 18
+    east_blank = [[ix, iy]
+                  for ix in range(nx) for iy in range(ny) if
+                  ((x[ix]-x1)*(y2-y1)-(y[iy]-y1)*(x2-x1)) > 0]
+    blank_index = np.array(east_blank+west_blank)
+    temperature_indicator[blank_index[:, 0], blank_index[:, 1], :] = 0
+
+    # thickness of current location
+    thickness = np.array([
+        [(np.cumsum(dz*(material_ids[ix, iy, ::-1]))[::-1]-0.5*dz).tolist()
+         for iy in range(ny)] for ix in range(nx)])
+
+    hdf5 = h5.File(daily_power_h5, "w")
+    hdf5.create_dataset("Materials", data=material_ids.flatten(order="F"))
+    hdf5.create_dataset("Temperature_indicator",
+                        data=temperature_indicator.flatten(order="F"))
+    hdf5.create_dataset("Thickness",
+                        data=thickness.flatten(order="F"))
+
+    # mean temperature
+    uk3d = UniversalKriging3D(
+        easting,
+        northing,
+        elevation,
+        daily_power,
+        variogram_model='linear',
+        drift_terms=['regional_linear'])
+    k3d, ss3d = uk3d.execute('grid', x, y, z)
+    power_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+    hdf5.create_dataset("Daily_power",
+                        data=power_data.flatten(order="F"))
+    hdf5.close()
+
+    xml_root = ET.Element("Xdmf", Version="3.0")
+    xml_domain = ET.SubElement(xml_root, "Domain")
+    # mesh
+    xml_toplogoy = ET.SubElement(xml_domain, "Topology",
+                                 {'TopologyType': '3DRECTMesh',
+                                  'Dimensions': "{0} {1} {2}".format(nz, ny, nx)})
+    xml_geometry = ET.SubElement(xml_domain, 'Geometry',
+                                 {'GeometryType': "VXVYVZ"})
+    xml_geometry_x = ET.SubElement(xml_geometry, 'DataItem',
+                                   {'Dimensions': str(nx),
+                                    "NumberType": "Float",
+                                    "Precision": "8",
+                                    "Format": "XML"})
+    xml_geometry_x.text = np.array_str(x).strip("[]").replace("\n", " ")
+    xml_geometry_y = ET.SubElement(xml_geometry, 'DataItem',
+                                   {'Dimensions': str(ny),
+                                    "NumberType": "Float",
+                                    "Precision": "8",
+                                    "Format": "XML"})
+    xml_geometry_y.text = np.array_str(y).strip("[]").replace("\n", " ")
+    xml_geometry_z = ET.SubElement(xml_geometry, 'DataItem',
+                                   {'Dimensions': str(nz),
+                                    "NumberType": "Float",
+                                    "Precision": "8",
+                                    "Format": "XML"})
+    xml_geometry_z.text = np.array_str(z).strip("[]").replace("\n", " ")
+
+    xml_grid = ET.SubElement(xml_domain, "Grid",
+                             {'Name': "Statistics",
+                              'GridType': 'Uniform'})
+    xml_topology_ref = ET.SubElement(
+        xml_grid, "Topology", {"Reference": "/Xdmf/Domain/Topology"})
+    xml_geometry_ref = ET.SubElement(
+        xml_grid, "Geometry", {"Reference": "/Xdmf/Domain/Geometry"})
+
+    xml_daily_power = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "Daily power",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_daily_power_dataitem = ET.SubElement(
+        xml_daily_power, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_daily_power_dataitem.text = daily_power_h5.split("/")[-1] + \
+        ":/Daily_power"
+
+    xml_material = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "material",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_material_dataitem = ET.SubElement(
+        xml_material, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_material_dataitem.text = daily_power_h5.split("/")[-1] + \
+        ":/Materials"
+
+    xml_temperature_indicator = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "temperature_indicator",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_temperature_indicator_dataitem = ET.SubElement(
+        xml_temperature_indicator, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_temperature_indicator_dataitem.text = daily_power_h5.split("/")[-1] + \
+        ":/Temperature_indicator"
+
+    xml_thickness = ET.SubElement(
+        xml_grid, "Attribute",
+        {"Name": "thickness",
+         "AttributeType": "Scalar",
+         "Center": "Node"})
+    xml_thickness_dataitem = ET.SubElement(
+        xml_thickness, "DataItem",
+        {"Format": "HDF",
+         "NumberType": "Float",
+         "Precision": "8",
+         "Dimensions": "{0} {1} {2}".format(nz, ny, nx)})
+    xml_thickness_dataitem.text = daily_power_h5.split("/")[-1] + \
+        ":/Thickness"
+
+    # ouput xmdf
+    with open(daily_power_xdmf, 'w') as f:
+        f.write(prettify(xml_root))
