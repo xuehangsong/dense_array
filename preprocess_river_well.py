@@ -41,9 +41,11 @@ sws1_file = data_dir+"SWS-1.csv"
 rg3_correction_file = data_dir+"RG3-T3/Data-correction/RG3_WL_Corrected.csv"
 rg3_raw_file = data_dir+"RG3-T3/Data-processing/2020-02-21/RG3_Gage/RG3_Gage_Raw.csv"
 air_file = data_dir+"300A_hsite_obs.csv"
-well_dir = data_dir+"well2-3/"
+well_dir = data_dir+"wells/"
+wells = glob.glob(data_dir+"wells/399*csv")
+wells = np.unique([iwell.split("/")[-1].split("_")[0] for iwell in wells])
 river_joblib = data_dir+"river.joblib"
-wells = ["2-1", "2-2", "2-3"]
+#wells = ["2-1", "2-2", "2-3"]
 
 
 # read air_file
@@ -156,7 +158,8 @@ for iwell in wells:
     well_time = []
     well_level = []
     well_temperature = []
-    for ifile in np.sort(glob.glob(well_dir + "*399-"+iwell+"_"+"*csv")):
+    well_spc = []
+    for ifile in np.sort(glob.glob(well_dir + iwell+"_"+"*csv")):
         print(ifile)
         with open(ifile, 'r') as f:
             reader = list(csv.reader(f))
@@ -167,10 +170,12 @@ for iwell in wells:
                       for x in data[:, 0]]
         well_temperature += data[:, 1].tolist()
         well_level += data[:, -1].tolist()
+        well_spc += data[:, 2].tolist()
 
     well_time = np.array(well_time)
     well_temperature = np.array(well_temperature)
     well_level = np.array(well_level)
+    well_spc = np.array(well_spc)
     filled_time = np.array(
         [well_time[0]+timedelta(seconds=x)
          for x in np.arange(0,
@@ -184,9 +189,13 @@ for iwell in wells:
     filled_well_temperature = np.empty((ntime))
     filled_well_temperature[:] = np.nan
     filled_well_temperature[filled_time_index] = well_temperature[well_time_index]
+    filled_well_spc = np.empty((ntime))
+    filled_well_spc[:] = np.nan
+    filled_well_spc[filled_time_index] = well_spc[well_time_index]
 
     well = dict()
     well["time"] = filled_time
     well["level"] = filled_well_level
     well["temperature"] = filled_well_temperature
-    joblib.dump(well, data_dir+"well_"+iwell+".joblib")
+    well["spc"] = filled_well_spc
+    joblib.dump(well, data_dir+"wells/"+iwell+".joblib")

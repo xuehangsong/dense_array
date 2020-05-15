@@ -34,6 +34,8 @@ import copy
 import numpy as np
 from datetime import datetime, timedelta
 import matplotlib.dates as mdates
+import scipy.interpolate as interp
+import glob
 
 
 def find_match(array_a, array_b):
@@ -282,91 +284,6 @@ def batch_time_to_delta(origin, x, time_format):
         y.append(temp_y)
     y = np.asarray(y)
     return(y)
-
-
-# input data
-data_dir = "/mnt/e/dense_array/data/"
-geo_unit_file = data_dir+"300A_EV_surfaces_012612.dat"
-bathymetry_file = data_dir+"g_bathymetry_v3_clip_2nd.asc"
-da1_joblib = data_dir+"da1.joblib"
-river_joblib = data_dir+"river.joblib"
-air_joblib = data_dir+"air.joblib"
-well2_1_joblib = data_dir+"well_2-1.joblib"
-well2_2_joblib = data_dir+"well_2-2.joblib"
-well2_3_joblib = data_dir+"well_2-3.joblib"
-truncated_da1_joblib = data_dir+"truncated_da1.joblib"
-cwt_joblib = data_dir+"cwt.joblib"
-well_file = "/mnt/e/rtd/Data/Observation_Data/well_coordinates_all.csv"
-# output
-results_dir = "/mnt/e/dense_array/results/"
-
-# figure
-img_dir = "/mnt/e/dense_array/figures/"
-
-# output
-paraview_dir = "/mnt/e/dense_array/paraview/"
-material_h5 = paraview_dir+"material_ids.h5"
-material_xdmf = paraview_dir+"material_ids.xdmf"
-original_material_h5 = paraview_dir+"original_material_ids.h5"
-original_materiall_xdmf = paraview_dir+"original_material_ids.xdmf"
-da1_h5 = paraview_dir+"da1.h5"
-da1_xdmf = paraview_dir+"da1.xdmf"
-temperature_3d_h5 = paraview_dir+"3d_temperature.h5"
-temperature_3d_xdmf = paraview_dir+"3d_temperature_"
-mean_temperature_h5 = paraview_dir+"mean_temperature.h5"
-mean_temperature_xdmf = paraview_dir+"mean_temperature.xdmf"
-
-daily_power_h5 = paraview_dir+"daily_power.h5"
-daily_power_xdmf = paraview_dir+"daily_power.xdmf"
-
-
-# load preprocessed data
-# da1 = joblib.load(da1_joblib)
-# river = joblib.load(river_joblib)
-
-
-date_origin = datetime.strptime("2017-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-date_label = ["2017",
-              "2018",
-              "2019",
-              "2020"]
-date_label_loc = [datetime.strptime(x, "%Y") for x in date_label]
-
-# date_label_loc = batch_time_to_delta(date_origin, date_label,
-#                                      "%Y") / 3600
-
-
-# define dimension
-south = 116255
-north = 116315
-west = 594455
-east = 594490
-bottom = 102
-top = 106
-# mesh
-ox = west
-ex = east
-oy = south
-ey = north
-oz = bottom
-ez = top
-dx = 0.5
-dy = 0.5
-dz = 0.1
-dx = np.array([dx]*int((ex-ox)/dx))
-dy = np.array([dy]*int((ey-oy)/dy))
-dz = np.array([dz]*int((ez-oz)/dz))
-x = ox+np.cumsum(dx) - 0.5*dx
-y = oy+np.cumsum(dy) - 0.5*dy
-z = oz+np.cumsum(dz) - 0.5*dz
-nx = len(dx)
-ny = len(dy)
-nz = len(dz)
-material_z = np.append(np.arange(z[-1], 96, -0.1)[::-1], z)
-material_nz = len(material_z)
-material_dz = np.array([0.1]*material_nz)
-bath_x = np.arange(593000.5598+0.5, 594900.5598, 1)
-bath_y = np.arange(114500.6771+0.5, 117800.6771, 1)
 
 
 def plot_depth_sorted():
@@ -1076,6 +993,8 @@ def create_material_updated():
     bath_data_new = bath_data_flatten_new.reshape(
         (len(bath_x), len(bath_y)), order="F")
 
+    np.savetxt(results_dir+"updated_bath.csv", bath_data_new, delimiter=",")
+
     # intepolate riverbed for model domain
     interp_bath = RectBivariateSpline(
         bath_x, bath_y, bath_data_new, kx=1, ky=1)
@@ -1231,7 +1150,9 @@ def kriging_temperature_only_thermistor():
     segments = [x for x, y in zip(segments, segment_length) if y > 30]
 #    print([len(x)*5/60/24 for x in segments])
 
-    segments = [segments[0][0:2], segments[1][0:2]]
+#   segments = [segments[0][0:2], segments[1][0:2]]
+    segments = [segments[0][np.arange(
+        0, 240, 4)], segments[5][np.arange(0, 2880, 12)]]
 
     # read material file
     hdf5 = h5.File(material_h5, "r")
@@ -1284,22 +1205,29 @@ def kriging_temperature_only_thermistor():
                         data=temperature_indicator.flatten(order="F"))
     hdf5.create_dataset("Thickness",
                         data=thickness.flatten(order="F"))
-
+    xyz_grid = np.array([(ix, iy, iz) for iz in z for iy in y for ix in x])
     for iseg in segments:
         print(len(iseg))
         for t_index in iseg:
             print(t_index)
             # krig data for one segments
-            uk3d = UniversalKriging3D(
-                therm_x,
-                therm_y,
-                therm_z,
+            # uk3d = UniversalKriging3D(
+            #     therm_x,
+            #     therm_y,
+            #     therm_z,
+            #     therm_data[:, t_index],
+            #     variogram_model='linear',
+            #     drift_terms=['regional_linear'])
+            # k3d, ss3d = uk3d.execute('grid', x, y, z)
+            # # output data to hdf5
+            # temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+            temp_data = interp.griddata(
+                (therm_x, therm_y, therm_z),
                 therm_data[:, t_index],
-                variogram_model='linear',
-                drift_terms=['regional_linear'])
-            k3d, ss3d = uk3d.execute('grid', x, y, z)
-            # output data to hdf5
-            temp_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+                (xyz_grid[:, 0], xyz_grid[:, 1], xyz_grid[:, 2]),
+                method='linear')
+            temp_data[np.isnan(temp_data)] = -10
+
             group = hdf5.create_group(str(round(da1["delta_day"][t_index], 3)))
             group.create_dataset("Temperature", data=temp_data)
     hdf5.close()
@@ -1419,6 +1347,8 @@ def kriging_temperature():
     krig temperature to the field.
     """
 
+    da1 = joblib.load(da1_joblib)
+
     thermistors = [x for x in list(
         da1.keys()) if x != "time" and x != "delta_day"]
     ntherm = len(thermistors)
@@ -1459,7 +1389,9 @@ def kriging_temperature():
     segments = [x for x, y in zip(segments, segment_length) if y > 30]
 #    print([len(x)*15/60/24 for x in segments])
 
-    segments = [segments[0][0:2], segments[1][0:2]]
+    segments = [segments[5][p.arange(0, 240, 4)]]
+
+    xyz_grid = np.array([(ix, iy, iz) for iz in z for iy in y for ix in x])
 
     # read material file
     hdf5 = h5.File(material_h5, "r")
@@ -1657,7 +1589,7 @@ def kriging_temperature():
 
 def plot_bath_ringold_large():
     """
-    read in data file and create material file
+    plot bathymtry and ringold 
     """
     da1 = joblib.load(da1_joblib)
 
@@ -3229,11 +3161,10 @@ def plot_power_sorted_thermistors():
     therm_elevation = therm_elevation[power_index]
     therm_riverbed = therm_riverbed[power_index]
     therm_data = therm_data[power_index, :]
-    daily_power = daily_power[power_index]
-    easting = easting[power_index]
     northing = northing[power_index]
     elevation = elevation[power_index]
-
+    daily_power = daily_power[power_index]
+    easting = easting[power_index]
     date_label = ["03/01",
                   "06/01",
                   "09/01",
@@ -3312,16 +3243,24 @@ def plot_power_sorted_thermistors():
     hdf5.create_dataset("Thickness",
                         data=thickness.flatten(order="F"))
 
-    # mean temperature
-    uk3d = UniversalKriging3D(
-        easting,
-        northing,
-        elevation,
-        daily_power,
-        variogram_model='linear',
-        drift_terms=['regional_linear'])
-    k3d, ss3d = uk3d.execute('grid', x, y, z)
-    power_data = k3d.data.swapaxes(0, 2).flatten(order="F")
+    xyz_grid = np.array([(ix, iy, iz) for iz in z for iy in y for ix in x])
+    power_data = interp.griddata(
+        (easting, northing, elevation),
+        np.log10(daily_power),
+        (xyz_grid[:, 0], xyz_grid[:, 1], xyz_grid[:, 2]),
+        method='linear')
+    power_data[np.isnan(power_data)] = -10
+
+    # # mean temperature
+    # uk3d = UniversalKriging3D(
+    #     easting,
+    #     northing,
+    #     elevation,
+    #     np.log10(daily_power),
+    #     variogram_model='linear',
+    #     drift_terms=['regional_linear'])
+    # k3d, ss3d = uk3d.execute('grid', x, y, z)
+    # power_data = k3d.data.swapaxes(0, 2).flatten(order="F")
     hdf5.create_dataset("Daily_power",
                         data=power_data.flatten(order="F"))
     hdf5.close()
@@ -3420,3 +3359,204 @@ def plot_power_sorted_thermistors():
     # ouput xmdf
     with open(daily_power_xdmf, 'w') as f:
         f.write(prettify(xml_root))
+
+
+def plot_daily_groundwater_large():
+    """
+    read in data file and create material file
+    """
+    interp_x = np.arange(593300, 594801, 10)
+    interp_y = np.arange(115400, 117101, 10)
+    grid_x, grid_y = np.meshgrid(interp_x, interp_y)
+
+    # define arange of data
+    date_start = datetime.strptime("2013-02-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+    date_end = datetime.strptime("2019-08-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+
+    # get all days
+    date_days = np.array(
+        [date_start+timedelta(seconds=x)
+         for x in np.arange(0,
+                            (date_end-date_start).total_seconds()
+                            + 3600*24, 3600*24)])
+    date_days = np.array([x.date() for x in date_days])
+
+    # load well coord
+    well_data = np.genfromtxt(well_file,
+                              delimiter=",",
+                              skip_header=1,
+                              dtype="str")
+    well_coord = dict()
+    for iwell in well_data:
+        if "399-" in iwell[0]:
+            well_coord[iwell[0].split(
+                "399-")[-1].lower()] = np.array(iwell[-2:][::-1], dtype="float")
+
+    well_joblibs = glob.glob(data_dir+"wells/399*joblib")
+    wells = [x.split("/")[-1].split(".")[0].split("399-")[-1].lower()
+             for x in well_joblibs]
+    well_coords = np.array([well_coord[iwell] for iwell in wells])
+
+    cb_label = dict()
+    cb_label["level"] = "Groundwater level (m)"
+    cb_label["temperature"] = "Temperature ($_o$C)"
+    cb_label["spc"] = "Specific conductance (mS/cm)"
+
+    cb_ticks = dict()
+    cb_ticks["level"] = np.arange(105, 109.1, 0.5)
+    cb_ticks["temperature"] = np.arange(10, 18.1, 1)
+    cb_ticks["spc"] = np.arange(0.1, 0.700003, 0.05)
+
+    contour_level = dict()
+    contour_level["level"] = np.arange(105, 108.01, 0.05)
+    contour_level["temperature"] = np.arange(10, 18.1, 0.05)
+    contour_level["spc"] = np.arange(0.1, 0.700003, 0.005)
+
+    # load well_data
+    well_data = dict()
+    for iwell, ijoblib in zip(wells, well_joblibs):
+        print(iwell, ijoblib)
+        well_data[iwell] = joblib.load(ijoblib)
+        well_data[iwell]["time"] = np.array([x.date()
+                                             for x in well_data[iwell]["time"]])
+
+    # loop over days
+
+    for iday in date_days:
+        for ivari in ["level", "temperature", "spc"]:
+            print(iday)
+            easting = []
+            northing = []
+            data = []
+            interp_wells = []
+            for iwell in wells:
+                time_index = well_data[iwell]["time"] == iday
+                if any(time_index):
+                    idata = well_data[iwell][ivari][time_index]
+                    if any(~np.isnan(idata)):
+                        easting.append(well_coord[iwell][0])
+                        northing.append(well_coord[iwell][1])
+                        data.append(np.nanmean(idata))
+                        interp_wells.append(iwell)
+            # level.append(np.nanmean(well_data[iwell]["level"][time_index]))
+            interp_data = interp.griddata(
+                np.transpose(np.vstack((easting, northing))),
+                data,
+                (grid_x, grid_y),
+                method="linear",)
+            imgfile = img_dir+"gw/"+ivari+"/"+iday.strftime("%Y-%m-%d")+".png"
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            cf = ax.contourf(interp_x,
+                             interp_y,
+                             interp_data,
+                             levels=contour_level[ivari],
+                             cmap=plt.cm.jet,
+                             extend="both",
+                             zorder=1)
+            ax.scatter(easting,
+                       northing,
+                       marker="^",
+                       color="fuchsia", s=10)
+            for iwell in interp_wells:
+                ax.text(well_coord[iwell][0]-30,
+                        well_coord[iwell][1]+20,
+                        iwell.upper(),
+                        color="fuchsia",
+                        fontsize=8)
+            ax.set_xlim(interp_x[0], interp_x[-1])
+            ax.set_ylim(interp_y[0], interp_y[-1])
+            ax.set_xlabel("Easting (m)")
+            ax.set_ylabel("Northing (m)")
+            ax.set_title(iday.strftime("%Y-%m-%d"))
+            ax.set_aspect(1)
+            ax4 = fig.add_axes([0.85, 0.085, 0.03, 0.85])
+            cb = plt.colorbar(cf, cax=ax4, extend="both")
+            cb = plt.colorbar(cf, cax=ax4, extend="both")
+            cb.ax.set_ylabel(cb_label[ivari],
+                             rotation=270, labelpad=14)
+            cb.set_ticks(cb_ticks[ivari])
+            fig.set_size_inches(7, 6)
+            fig.subplots_adjust(left=0.15,
+                                right=0.8,
+                                bottom=0.06,
+                                top=0.97,
+                                wspace=0.25,
+                                hspace=0.3)
+            fig.savefig(imgfile, dpi=300, transparent=False)
+            plt.close(fig)
+
+
+        # input data
+data_dir = "/mnt/e/dense_array/data/"
+geo_unit_file = data_dir+"300A_EV_surfaces_012612.dat"
+bathymetry_file = data_dir+"g_bathymetry_v3_clip_2nd.asc"
+da1_joblib = data_dir+"da1.joblib"
+river_joblib = data_dir+"river.joblib"
+air_joblib = data_dir+"air.joblib"
+well2_1_joblib = data_dir+"well_2-1.joblib"
+well2_2_joblib = data_dir+"well_2-2.joblib"
+well2_3_joblib = data_dir+"well_2-3.joblib"
+truncated_da1_joblib = data_dir+"truncated_da1.joblib"
+cwt_joblib = data_dir+"cwt.joblib"
+well_file = "/mnt/e/rtd/Data/Observation_Data/well_coordinates_all.csv"
+# output
+results_dir = "/mnt/e/dense_array/results/"
+
+# figure
+img_dir = "/mnt/e/dense_array/figures/"
+
+# paraview files
+paraview_dir = "/mnt/e/dense_array/paraview/"
+material_h5 = paraview_dir+"material_ids.h5"
+material_xdmf = paraview_dir+"material_ids.xdmf"
+original_material_h5 = paraview_dir+"original_material_ids.h5"
+original_materiall_xdmf = paraview_dir+"original_material_ids.xdmf"
+da1_h5 = paraview_dir+"da1.h5"
+da1_xdmf = paraview_dir+"da1.xdmf"
+temperature_3d_h5 = paraview_dir+"3d_temperature.h5"
+temperature_3d_xdmf = paraview_dir+"3d_temperature_"
+mean_temperature_h5 = paraview_dir+"mean_temperature.h5"
+mean_temperature_xdmf = paraview_dir+"mean_temperature.xdmf"
+daily_power_h5 = paraview_dir+"daily_power.h5"
+daily_power_xdmf = paraview_dir+"daily_power.xdmf"
+
+# for plotting
+date_label = ["2017",
+              "2018",
+              "2019",
+              "2020"]
+date_label_loc = [datetime.strptime(x, "%Y") for x in date_label]
+
+
+# define dimension for visulization
+south = 116255
+north = 116315
+west = 594455
+east = 594490
+bottom = 102
+top = 106
+# mesh
+ox = west
+ex = east
+oy = south
+ey = north
+oz = bottom
+ez = top
+dx = 0.5
+dy = 0.5
+dz = 0.1
+dx = np.array([dx]*int((ex-ox)/dx))
+dy = np.array([dy]*int((ey-oy)/dy))
+dz = np.array([dz]*int((ez-oz)/dz))
+x = ox+np.cumsum(dx) - 0.5*dx
+y = oy+np.cumsum(dy) - 0.5*dy
+z = oz+np.cumsum(dz) - 0.5*dz
+nx = len(dx)
+ny = len(dy)
+nz = len(dz)
+material_z = np.append(np.arange(z[-1], 96, -0.1)[::-1], z)
+material_nz = len(material_z)
+material_dz = np.array([0.1]*material_nz)
+bath_x = np.arange(593000.5598+0.5, 594900.5598, 1)
+bath_y = np.arange(114500.6771+0.5, 117800.6771, 1)
