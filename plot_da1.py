@@ -3370,7 +3370,7 @@ def plot_daily_groundwater_large():
     grid_x, grid_y = np.meshgrid(interp_x, interp_y)
 
     # define arange of data
-    date_start = datetime.strptime("2013-02-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+    date_start = datetime.strptime("2016-07-10 00:00:00", "%Y-%m-%d %H:%M:%S")
     date_end = datetime.strptime("2019-08-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
     # get all days
