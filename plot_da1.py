@@ -7,8 +7,8 @@
 # DESCRIPTION:
 # DESCRIPTION-END
 
-# from fastdtw import fastdtw
-
+from fastdtw import fastdtw
+from scipy.spatial.distance import euclidean
 import pywt
 import multiprocessing as mp
 from matplotlib.patches import Rectangle
@@ -36,12 +36,89 @@ from datetime import datetime, timedelta
 import matplotlib.dates as mdates
 import scipy.interpolate as interp
 import glob
+from scipy.stats import pearsonr
+
+
+def plot_power_depth():
+
+    # load data
+    truncated_da1 = joblib.load(truncated_da1_joblib)
+    thermistors = np.array(truncated_da1["thermistors"])
+    therm_depth = np.array(truncated_da1["depth"])
+    therm_elevation = np.array(truncated_da1["elevation"])
+    therm_riverbed = np.array(truncated_da1["riverbed"])
+    therm_data = np.array(truncated_da1["data"])
+    therm_time = np.array(truncated_da1["time"])
+    easting = np.array(truncated_da1["easting"])
+    northing = np.array(truncated_da1["northing"])
+    elevation = np.array(truncated_da1["elevation"])
+    mean_temp = np.mean(therm_data, 1)
+    std_temp = np.std(therm_data, 1)
+    cv_temp = std_temp/mean_temp
+
+    # well
+    cwt_data = joblib.load(results_dir+"cwt/well.joblib")
+    time = cwt_data["time"]
+    delta_time = cwt_data["delta_time"]
+    freq = cwt_data["freq"]
+    scale = cwt_data["scale"]
+    period = cwt_data["period"]
+    arch = cwt_data["arch"]
+    arch_array = np.tile(np.expand_dims(np.array(arch), 0), (len(period), 1))
+    arch_indicator = np.tile(np.expand_dims(
+        period, 1), (1, len(time)))-arch_array
+    arch_indicator[arch_indicator >= 0] = np.nan
+    arch_indicator[arch_indicator < 0] = 1
+
+    # load thermistor
+    average_power = dict()
+    for thermistor_index, ithermistor in enumerate(thermistors):
+        print(thermistor_index)
+        cwt_data = joblib.load(results_dir+ithermistor+".joblib")
+        average_power[ithermistor] = np.nanmean(
+            cwt_data["power"]*arch_indicator, axis=1)
+
+    daily_power = []
+    for ithermistor in thermistors:
+        daily_power.append(np.interp(1, period, average_power[ithermistor]))
+    daily_power = np.array(daily_power)
+
+    # locate groups
+    riverbed_group = [np.where(therm_riverbed < 104.2)[0],
+                      np.where((therm_riverbed > 104.2) *
+                               (therm_riverbed < 105.2))[0],
+                      np.where(therm_riverbed > 105.2)[0]]
+    riverbed_group_names = ["104 m", "104.5 m", "105.5 m"]
+    riverbed_group_color = ["green", "purple", "black"]
+
+    imgfile = img_dir+"scatter/VS_power_mean_temp.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    for group_index, igroup in enumerate(riverbed_group):
+        ax.scatter(np.log10(daily_power[igroup]),
+                   mean_temp[igroup],
+                   edgecolor=riverbed_group_color[group_index],
+                   facecolor="none",
+                   s=30,
+                   label=riverbed_group_names[group_index])
+    ax.set_xlabel("Wavelet power spectrum (log10)")
+    ax.set_ylabel("Mean temperature ($^o$C)")
+    ax.legend()
+    fig.set_size_inches(4, 3.5)
+    fig.subplots_adjust(left=0.2,
+                        right=0.9,
+                        bottom=0.15,
+                        top=0.95,
+                        wspace=0.25,
+                        hspace=0.3)
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
 
 
 def find_match(array_a, array_b):
     """
     find index of array_a, array_b,
-    and return the indexes of (first) matched elements 
+    and return the indexes of (first) matched elements
     array_a and array_b should be sorted 1d array
     """
     len_b = len(array_b)
@@ -235,19 +312,117 @@ def DTWDistance(s1, s2):
 
 
 def dtw():
-    # dtw (slow version)
-    # ri = random.choices(np.arange(len(rive_rtracer[0])), k=50)
-    # dist_spatial = [DTWDistance(river_tracer[:, ri[i]], river_tracer[:, ri[j]])
-    #              for i in range(len(ri)) for j in range(len(ri))]
-    ri = random.choices(np.arange(len(river_tracer[0])), k=400)
-    dist_spatial_tri = [[fastdtw(river_tracer[:, ri[i]], river_tracer[:, ri[j]])[0]
-                         for i in range(j+1)] for j in range(len(ri))]
-    dist_spatial = np.zeros((len(ri), len(ri)))
-    for i, j in enumerate(dist_spatial_tri):
-        dist_spatial[i][0:len(j)] = j
-    dist_spatial = dist_spatial+np.transpose(dist_spatial)
-    dist_spatial = distance.squareform(
-        dist_spatial, force="tovector", checks=True)
+
+    # load data
+    truncated_da1 = joblib.load(truncated_da1_joblib)
+    thermistors = np.array(truncated_da1["thermistors"])
+    therm_depth = np.array(truncated_da1["depth"])
+    therm_elevation = np.array(truncated_da1["elevation"])
+    therm_riverbed = np.array(truncated_da1["riverbed"])
+    therm_data = np.array(truncated_da1["data"])
+    therm_time = np.array(truncated_da1["time"])
+    easting = np.array(truncated_da1["easting"])
+    northing = np.array(truncated_da1["northing"])
+    elevation = np.array(truncated_da1["elevation"])
+    mean_temp = np.mean(therm_data, 1)
+    std_temp = np.std(therm_data, 1)
+    cv_temp = std_temp/mean_temp
+
+    therm_cov = np.cov(therm_data)
+    therm_cor = np.array([[pearsonr(therm_data[i], therm_data[j])[0]
+                           for i in range(len(therm_data))]
+                          for j in range(len(therm_data))])
+    therm_cor = np.array([[pearsonr(therm_data[i], therm_data[j])[0]
+                           for i in range(len(therm_data))]
+                          for j in range(len(therm_data))])
+    therm_dtw = []
+    therm_rmse = []
+    for j in range(len(therm_data)):
+        print(j)
+        therm_dtw.append([])
+        therm_rmse.append([])
+        for i in range(len(therm_data)):
+            therm_rmse[j].append(
+                (np.sum((therm_data[i]-therm_data[j])**2)/len(therm_data[i]))**0.5)
+            distance, pair = fastdtw(
+                therm_data[i], therm_data[j])
+            # distance, pair = fastdtw(
+            #     therm_data[i], therm_data[j], dist=euclidean)
+            therm_dtw[j].append((distance/len(pair))**0.5)
+    therm_dtw = np.array(therm_dtw)
+    therm_rmse = np.array(therm_rmse)
+
+
+def plot_dtw():
+    ntherm = len(therm_data)
+    imgfile = img_dir+"test.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    dis_horizontal = []
+    dis_vertical = []
+    value = []
+    for j in range(ntherm):
+        for i in range(j+1, ntherm):
+            if abs(therm_depth[i]-therm_depth[j]) < 0.1:
+                dis_horizontal.append(((easting[i]-easting[j])**2 +
+                                       (northing[i]-northing[j])**2)**0.5)
+                dis_vertical.append(therm_depth[i]-therm_depth[j])
+                value.append(therm_dtw[i, j])
+    ax.scatter(dis_horizontal,
+               value,
+               edgecolor="black",
+               facecolor="black",
+               s=3,)
+    ax.set_xlabel("Distance between thermistors  (m)")
+    ax.set_ylabel("DTW distance ($^o$C)")
+    ax.set_xlim(0, 60)
+    ax.set_ylim(0, 1)
+    fig.set_size_inches(4, 3.5)
+    fig.subplots_adjust(left=0.2,
+                        right=0.9,
+                        bottom=0.15,
+                        top=0.95,
+                        wspace=0.25,
+                        hspace=0.3)
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
+
+
+def test():
+    # plot dtw
+    ntherm = len(therm_data)
+    imgfile = img_dir+"test.png"
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    dis_horizontal = []
+    dis_vertical = []
+    value = []
+    for j in range(ntherm):
+        for i in range(j+1, ntherm):
+            if abs(therm_depth[i]-therm_depth[j]) < 0.1:
+                print(abs(therm_depth[i]-therm_depth[j]))
+                dis_horizontal.append(((easting[i]-easting[j])**2 +
+                                       (northing[i]-northing[j])**2)**0.5)
+                dis_vertical.append(therm_depth[i]-therm_depth[j])
+                value.append(therm_rmse[i, j])
+    ax.scatter(dis_horizontal,
+               value,
+               edgecolor="black",
+               facecolor="black",
+               s=3,)
+    ax.set_xlabel("Distance between thermistors  (m)")
+    ax.set_ylabel("RMSE ($^o$C)")
+    ax.set_xlim(0, 60)
+    ax.set_ylim(0, 2.5)
+    fig.set_size_inches(4, 3.5)
+    fig.subplots_adjust(left=0.2,
+                        right=0.9,
+                        bottom=0.15,
+                        top=0.95,
+                        wspace=0.25,
+                        hspace=0.3)
+    fig.savefig(imgfile, bbox_inches=0, dpi=300)
+    plt.close(fig)
 
 
 def batch_delta_to_time(origin, x, time_format, delta_format):
@@ -309,7 +484,8 @@ def plot_depth_sorted():
     fig, axes = plt.subplots(nrow, ncol)
     for therm_index, ithermistor in enumerate(thermistors):
         ax = axes.flatten()[therm_index]
-        ax.fill_between(da1["time"], therm_low, therm_high, color="lightgrey")
+        ax.fill_between(da1["time"], therm_low,
+                        therm_high, color="lightgrey")
         ax.plot(
             da1["time"], da1[ithermistor]["temperature"], color="black")
         ax.set_xlabel('Date')
@@ -353,7 +529,8 @@ def plot_depth_sorted_fill():
     fig, axes = plt.subplots(nrow, ncol)
     for therm_index, ithermistor in enumerate(thermistors[0:2]):
         ax = axes.flatten()[therm_index]
-        ax.fill_between(da1["time"], therm_low, therm_high, color="lightgrey")
+        ax.fill_between(da1["time"], therm_low,
+                        therm_high, color="lightgrey")
         ax.plot(
             da1["time"], da1[ithermistor]["temperature"], color="blue")
         ax.set_xlabel('Date')
@@ -443,7 +620,8 @@ def plot_elevation_sorted():
     fig, axes = plt.subplots(nrow, ncol)
     for therm_index, ithermistor in enumerate(thermistors):
         ax = axes.flatten()[therm_index]
-        ax.fill_between(da1["time"], therm_low, therm_high, color="lightgrey")
+        ax.fill_between(da1["time"], therm_low,
+                        therm_high, color="lightgrey")
         ax.plot(
             da1["time"], da1[ithermistor]["temperature"], color="black")
 
@@ -3023,12 +3201,14 @@ def plot_average_cwt():
         np.log10(period),
         zorder=200,
         color="blue",
+        label="River",
         lw=2)
     ax.plot(
         np.log10(average_power["well"]),
         np.log10(period),
         zorder=300,
         color="red",
+        label="Groundwater",
         lw=2)
     for ithermistor in thermistors["thermistors"]:
         ax.plot(
@@ -3036,6 +3216,7 @@ def plot_average_cwt():
             np.log10(period),
             color="gray",
             zorder=1,
+            label="Thermistors",
             lw=0.5)
     ax.set_ylim(np.log10(period[0]),
                 np.log10(period[-1]))
@@ -3043,6 +3224,11 @@ def plot_average_cwt():
     ax.set_ylabel('Period (log10)')
     ax.set_xlabel("Wavelet power spectrum (log10)")
     ax.set_yticklabels(["1h", "1d", "1w", "1m", "1y"])
+    handles, labels = ax.get_legend_handles_labels()
+    unique_legend = [(h, l) for i, (h, l) in enumerate(
+        zip(handles, labels)) if l not in labels[:i]]
+    ax.legend(*zip(*unique_legend), loc="upper left", ncol=1)
+
     fig.set_size_inches(4, 7)
     fig.tight_layout()
     fig.savefig(imgfile, dpi=600, bbox_inches=0)
@@ -3142,6 +3328,20 @@ def plot_power_sorted_thermistors():
     northing = np.array(truncated_da1["northing"])
     elevation = np.array(truncated_da1["elevation"])
 
+    # well
+    cwt_data = joblib.load(results_dir+"cwt/well.joblib")
+    time = cwt_data["time"]
+    delta_time = cwt_data["delta_time"]
+    freq = cwt_data["freq"]
+    scale = cwt_data["scale"]
+    period = cwt_data["period"]
+    arch = cwt_data["arch"]
+    arch_array = np.tile(np.expand_dims(np.array(arch), 0), (len(period), 1))
+    arch_indicator = np.tile(np.expand_dims(
+        period, 1), (1, len(time)))-arch_array
+    arch_indicator[arch_indicator >= 0] = np.nan
+    arch_indicator[arch_indicator < 0] = 1
+
     # load thermistor
     average_power = dict()
     for thermistor_index, ithermistor in enumerate(thermistors):
@@ -3163,8 +3363,12 @@ def plot_power_sorted_thermistors():
     therm_data = therm_data[power_index, :]
     northing = northing[power_index]
     elevation = elevation[power_index]
-    daily_power = daily_power[power_index]
     easting = easting[power_index]
+    daily_power = daily_power[power_index]
+
+    therm_low = np.nanmin(therm_data, 0)
+    therm_high = np.nanmax(therm_data, 0)
+
     date_label = ["03/01",
                   "06/01",
                   "09/01",
@@ -3486,7 +3690,6 @@ def plot_daily_groundwater_large():
             fig.savefig(imgfile, dpi=300, transparent=False)
             plt.close(fig)
 
-
         # input data
 data_dir = "/mnt/e/dense_array/data/"
 geo_unit_file = data_dir+"300A_EV_surfaces_012612.dat"
@@ -3498,6 +3701,7 @@ well2_1_joblib = data_dir+"well_2-1.joblib"
 well2_2_joblib = data_dir+"well_2-2.joblib"
 well2_3_joblib = data_dir+"well_2-3.joblib"
 truncated_da1_joblib = data_dir+"truncated_da1.joblib"
+ms5_joblib = data_dir+"ms5.joblib"
 cwt_joblib = data_dir+"cwt.joblib"
 well_file = "/mnt/e/rtd/Data/Observation_Data/well_coordinates_all.csv"
 # output
@@ -3560,3 +3764,77 @@ material_nz = len(material_z)
 material_dz = np.array([0.1]*material_nz)
 bath_x = np.arange(593000.5598+0.5, 594900.5598, 1)
 bath_y = np.arange(114500.6771+0.5, 117800.6771, 1)
+
+
+def plot_power_depth():
+
+    # load data
+    truncated_da1 = joblib.load(truncated_da1_joblib)
+    thermistors = np.array(truncated_da1["thermistors"])
+    therm_depth = np.array(truncated_da1["depth"])
+    therm_elevation = np.array(truncated_da1["elevation"])
+    therm_riverbed = np.array(truncated_da1["riverbed"])
+    therm_data = np.array(truncated_da1["data"])
+    therm_time = np.array(truncated_da1["time"])
+    easting = np.array(truncated_da1["easting"])
+    northing = np.array(truncated_da1["northing"])
+    elevation = np.array(truncated_da1["elevation"])
+
+    # well
+    cwt_data = joblib.load(results_dir+"cwt/well.joblib")
+    time = cwt_data["time"]
+    delta_time = cwt_data["delta_time"]
+    freq = cwt_data["freq"]
+    scale = cwt_data["scale"]
+    period = cwt_data["period"]
+    arch = cwt_data["arch"]
+    arch_array = np.tile(np.expand_dims(np.array(arch), 0), (len(period), 1))
+    arch_indicator = np.tile(np.expand_dims(
+        period, 1), (1, len(time)))-arch_array
+    arch_indicator[arch_indicator >= 0] = np.nan
+    arch_indicator[arch_indicator < 0] = 1
+
+    # load thermistor
+    average_power = dict()
+    for thermistor_index, ithermistor in enumerate(thermistors):
+        print(thermistor_index)
+        cwt_data = joblib.load(results_dir+ithermistor+".joblib")
+        average_power[ithermistor] = np.nanmean(
+            cwt_data["power"]*arch_indicator, axis=1)
+
+    daily_power = []
+    for ithermistor in thermistors:
+        daily_power.append(np.interp(1, period, average_power[ithermistor]))
+    daily_power = np.array(daily_power)
+
+    power_index = np.argsort(daily_power)
+    thermistors = thermistors[power_index]
+
+    ms5 = joblib.load(ms5_joblib)
+
+
+def test():
+    ntherm = len(thermistors)
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "test.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        name = da1[thermistor_index]["name"]
+        if ithermistor in ms5.keys():
+            ax = axes.flatten()[therm_index]
+            ax.plot(
+                ms5[ithermistor]["times"],
+                ms5[ithermistor]["do"],
+                color="black", label="Filled")
+            ax.set_xlabel('Date (2018)')
+            ax.set_ylabel('Temperature $_oC$')
+            ax.set_title(
+                "Depth ="+"{0:.3f}".format(therm_depth[therm_index])+" m")
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")

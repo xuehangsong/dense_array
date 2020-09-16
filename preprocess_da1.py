@@ -50,6 +50,7 @@ da1 = dict()
 for idata in data:
     therm_name = idata[1].replace("(", "").replace(")", "")
     da1[therm_name] = dict()
+    da1[therm_name]["name"] = idata[0]
     da1[therm_name]["easting"] = float(idata[4])
     da1[therm_name]["northing"] = float(idata[5])
     da1[therm_name]["riverbed"] = float(idata[2])
