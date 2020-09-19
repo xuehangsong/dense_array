@@ -3690,6 +3690,7 @@ def plot_daily_groundwater_large():
             fig.savefig(imgfile, dpi=300, transparent=False)
             plt.close(fig)
 
+
         # input data
 data_dir = "/mnt/e/dense_array/data/"
 geo_unit_file = data_dir+"300A_EV_surfaces_012612.dat"
@@ -3810,27 +3811,211 @@ def plot_power_depth():
     power_index = np.argsort(daily_power)
     thermistors = thermistors[power_index]
 
+    # load ms5 data
     ms5 = joblib.load(ms5_joblib)
+    da1 = joblib.load(da1_joblib)
+    date_label = ["03/01",
+                  "06/01",
+                  "09/01",
+                  "12/01"]
+    date_label_loc = [datetime.strptime(
+        x+"/2018", "%m/%y/%Y") for x in date_label]
 
 
-def test():
+def plot_ms5_temp_line():
     ntherm = len(thermistors)
     ncol = 10
     nrow = np.ceil(ntherm/ncol).astype(int)
-    fig_name = img_dir + "test.png"
+    fig_name = img_dir + "ms5/temperature_line.png"
     fig, axes = plt.subplots(nrow, ncol)
     for therm_index, ithermistor in enumerate(thermistors):
-        name = da1[thermistor_index]["name"]
-        if ithermistor in ms5.keys():
-            ax = axes.flatten()[therm_index]
+        therm_name = da1[ithermistor]["name"]
+        ax = axes.flatten()[therm_index]
+        if therm_name in ms5.keys():
             ax.plot(
-                ms5[ithermistor]["times"],
-                ms5[ithermistor]["do"],
+                ms5[therm_name]["times"],
+                ms5[therm_name]["temp"],
+                #                s=5,
                 color="black", label="Filled")
             ax.set_xlabel('Date (2018)')
-            ax.set_ylabel('Temperature $_oC$')
+            ax.set_ylabel('Temperature ($^o$C)')
+            ax.set_ylim((0, 25))
+            ax.set_xticks(date_label_loc)
+            ax.set_xticklabels(date_label)
             ax.set_title(
                 "Depth ="+"{0:.3f}".format(therm_depth[therm_index])+" m")
+        else:
+            ax.set_axis_off()
+            ax.set_title(
+                "Depth ="+"{0:.3f}".format(therm_depth[therm_index])+" m")
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")
+
+
+def plot_ms5_temp_scatter():
+    ntherm = len(thermistors)
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "ms5/temperature_scatter.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        therm_name = da1[ithermistor]["name"]
+        ax = axes.flatten()[therm_index]
+        if therm_name in ms5.keys():
+            ax.scatter(
+                ms5[therm_name]["times"],
+                ms5[therm_name]["temp"],
+                s=5,
+                color="black", label="Filled")
+            ax.set_xlabel('Date (2018)')
+            ax.set_ylabel('Temperature ($^o$C)')
+            ax.set_ylim((0, 45))
+            ax.set_xticks(date_label_loc)
+            ax.set_xticklabels(date_label)
+            ax.set_title(
+                "Depth ="+"{0:.3f}".format(therm_depth[therm_index])+" m")
+        else:
+            ax.set_axis_off()
+            ax.set_title(
+                "Depth ="+"{0:.3f}".format(therm_depth[therm_index])+" m")
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")
+
+
+def plot_ms5_temp_scatter_da1():
+    ntherm = len(thermistors)
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "ms5/temperature_scatter_da1.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        therm_name = da1[ithermistor]["name"]
+        ax = axes.flatten()[therm_index]
+        if therm_name in ms5.keys():
+            ax.scatter(
+                ms5[therm_name]["times"],
+                ms5[therm_name]["temp"],
+                s=5,
+                color="red", label="MS5")
+            ax.set_xlabel('Date (2018)')
+            ax.set_ylabel('Temperature ($^o$C)')
+        else:
+            ax.set_title(
+                "Depth ="+"{0:.3f}".format(therm_depth[therm_index])+" m")
+        ax.set_xticks(date_label_loc)
+        ax.set_xticklabels(date_label)
+        ax.plot(
+            therm_time,
+            therm_data[therm_index, :], color="black", label="Thermistor")
+        ax.set_ylim((0, 45))
+        ax.set_title(therm_name)
+        ax.legend(loc="lower center", frameon=False)
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")
+
+
+def plot_ms5_spc():
+    ntherm = len(thermistors)
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "ms5/spc.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        therm_name = da1[ithermistor]["name"]
+        ax = axes.flatten()[therm_index]
+        if therm_name in ms5.keys():
+            ax.scatter(
+                ms5[therm_name]["times"],
+                ms5[therm_name]["spc"],
+                s=5,
+                color="red", label="MS5")
+            ax.set_xlabel('Date (2018)')
+            ax.set_ylabel('Specific conductance (uS/cm)')
+            ax.set_ylim((100, 500))
+            ax.set_xticks(date_label_loc)
+            ax.set_xticklabels(date_label)
+        else:
+            ax.set_axis_off()
+        ax.set_title(therm_name)
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")
+
+
+def plot_ms5_do_satu():
+    ntherm = len(thermistors)
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "ms5/do_satu.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        therm_name = da1[ithermistor]["name"]
+        ax = axes.flatten()[therm_index]
+        if therm_name in ms5.keys():
+            ax.scatter(
+                ms5[therm_name]["times"],
+                ms5[therm_name]["do_satu"],
+                s=5,
+                color="red", label="Filled")
+            ax.set_xlabel('Date (2018)')
+            ax.set_ylabel('Dissolved Oxygen (%)')
+            ax.set_ylim((0, 150))
+            ax.set_xticks(date_label_loc)
+            ax.set_xticklabels(date_label)
+        else:
+            ax.set_axis_off()
+        ax.set_title(therm_name)
+    for ax in axes.flatten()[therm_index+1:ncol*nrow]:
+        ax.set_axis_off()
+    fig.set_size_inches(30, 20)
+    fig.tight_layout()
+    fig.savefig(fig_name, dpi=100, bbox_inches=0)  # , transparent=True)
+    plt.close(fig)
+    print("Hello World!")
+
+
+def plot_ms5_do():
+    ntherm = len(thermistors)
+    ncol = 10
+    nrow = np.ceil(ntherm/ncol).astype(int)
+    fig_name = img_dir + "ms5/do.png"
+    fig, axes = plt.subplots(nrow, ncol)
+    for therm_index, ithermistor in enumerate(thermistors):
+        therm_name = da1[ithermistor]["name"]
+        ax = axes.flatten()[therm_index]
+        if therm_name in ms5.keys():
+            ax.scatter(
+                ms5[therm_name]["times"],
+                ms5[therm_name]["do"],
+                s=5,
+                color="red", label="Filled")
+            ax.set_xlabel('Date (2018)')
+            ax.set_ylabel('Dissolved Oxygen (mg/L)')
+            ax.set_ylim((0, 12))
+            ax.set_xticks(date_label_loc)
+            ax.set_xticklabels(date_label)
+        else:
+            ax.set_axis_off()
+        ax.set_title(therm_name)
     for ax in axes.flatten()[therm_index+1:ncol*nrow]:
         ax.set_axis_off()
     fig.set_size_inches(30, 20)
